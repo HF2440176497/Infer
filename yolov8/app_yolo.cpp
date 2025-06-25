@@ -29,7 +29,10 @@ int main(int argc, char** argv) {
     utils::InitParameter params;
     setParameters(params);
 
-    std::vector<cv::Mat> imgs_batch = utils::load_images("../data/images");
+    params.src_h = 2048;
+    params.src_w = 2048;
+
+    std::vector<cv::Mat> imgs_batch = utils::load_images("../test_imgs");
 
     int dev = 0;
     CHECK(cudaGetDevice(&dev));
@@ -38,14 +41,14 @@ int main(int argc, char** argv) {
 
     std::shared_ptr<YOLO::Yolo> p_yolo = std::make_shared<YOLOV8>(params);
 
-    std::string model_path = "test.model";
+    std::string model_path = "../model/test.model";
     std::vector<uint8_t> trt_file = utils::load_model(model_path);
 	if (trt_file.empty()) {
-		sample::gLogError << "trt_file is empty" << std::endl;
+		std::cerr << "trt_file is empty" << std::endl;
 		return -1;
 	}
-    if (p_yolo->init("trt_file")) {
-		sample::gLogError << "init engine ocur errors " << std::endl;
+    if (p_yolo->init(trt_file) == false) {
+		std::cerr << "init engine ocur errors " << std::endl;
 		return -1;
     }
     p_yolo->task(imgs_batch);

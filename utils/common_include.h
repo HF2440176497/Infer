@@ -6,8 +6,6 @@
 #include <cuda_runtime_api.h>
 #include <device_atomic_functions.h>
 #include <device_launch_parameters.h>
-#include <logger.h>
-#include <parserOnnxConfig.h>
 #include <thrust/sort.h>
 
 #include <opencv2/opencv.hpp>
@@ -24,6 +22,7 @@
 #include <sstream>
 #include <filesystem>
 #include <stdexcept>
+#include <iomanip>
 
 #include <vector>
 #include <string>

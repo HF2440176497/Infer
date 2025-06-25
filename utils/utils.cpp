@@ -4,9 +4,13 @@
 
 namespace fs = std::filesystem;
 
-std::vector<cv::Mat> utils::load_images(const std::string& folderPath) {
+
+/**
+ * 加载指定目录下的图片
+ */
+std::vector<cv::Mat> utils::load_images(const std::string& folder_path) {
     std::vector<cv::Mat> images;
-    for (const auto& entry : fs::directory_iterator(folderPath)) {
+    for (const auto& entry : fs::directory_iterator(folder_path)) {
         if (entry.is_regular_file()) {
             std::string filePath = entry.path().string();
             std::string ext = entry.path().extension().string();
@@ -31,7 +35,7 @@ std::vector<cv::Mat> utils::load_images(const std::string& folderPath) {
  * @param save_path 保存路径
  * @param normalize 是否将数据从 [0,1] 归一化到 [0,255]
  */
-void utils::save_float_image(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false) {
+void utils::save_float_image(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize) {
     if (!d_src || dst_w <= 0 || dst_h <= 0) {
         throw std::runtime_error("Invalid input parameters");
     }

@@ -80,19 +80,24 @@ namespace utils
         
         __host__ __device__ AffineMat() : v0(1), v1(0), v2(0), v3(0), v4(1), v5(0) {}
         
-        __host__ static AffineMat from_cvmat(const cv::Mat& mat) {
-            AffineMat result;
+        __host__ void from_cvmat(const cv::Mat& mat) {
             if (mat.rows != 2 || mat.cols != 3 || mat.type() != CV_32FC1) {
                 std::cerr << "AffineMat: Input matrix must be 2x3 and CV_32FC1" << std::endl;
-                return result; // 返回单位矩阵
             }
-            result.v0 = mat.ptr<float>(0)[0];
-            result.v1 = mat.ptr<float>(0)[1];
-            result.v2 = mat.ptr<float>(0)[2];
-            result.v3 = mat.ptr<float>(1)[0];
-            result.v4 = mat.ptr<float>(1)[1];
-            result.v5 = mat.ptr<float>(1)[2];
-            return result;
+            // std::cout << "mat ptr: " << mat.ptr<float>(0)[0] << std::endl;
+
+            v0 = mat.ptr<float>(0)[0];
+            v1 = mat.ptr<float>(0)[1];
+            v2 = mat.ptr<float>(0)[2];
+            v3 = mat.ptr<float>(1)[0];
+            v4 = mat.ptr<float>(1)[1];
+            v5 = mat.ptr<float>(1)[2];
+        }
+
+        void print(const std::string& title = "AffineMat") const {
+            std::printf("%s:\n", title.c_str());
+            std::printf("[%10.4f, %10.4f, %10.4f]\n", v0, v1, v2);
+            std::printf("[%10.4f, %10.4f, %10.4f]\n", v3, v4, v5);
         }
     };
 
