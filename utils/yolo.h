@@ -36,8 +36,8 @@ namespace YOLO {
     protected:
         uint8_t* m_input_src_dev = nullptr;
         float* m_input_hwc_dev = nullptr;
-        std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers_;  // 预处理输入图像
-        std::shared_ptr<TRT::Tensor> input_buffer_;  // TODO: 根据模型信息确定尺寸
+        std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers_;  // 保存输入图像
+        std::shared_ptr<TRT::Tensor> input_buffer_;  // 模型输入 NCHW
 
     protected:
         utils::InitParameter m_param;

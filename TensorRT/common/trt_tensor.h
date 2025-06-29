@@ -2,7 +2,7 @@
 #pragma once
 
 #include "common_include.h"
-
+#include "cuda_tools.h"
 
 #define CURRENT_DEVICE_ID           -1
 
@@ -21,6 +21,8 @@ namespace TRT {
         Int32 = 2,
         UInt8 = 3
     };
+
+    int data_type_size(DataType dt);
 
     class MixMemory {
     public:
@@ -48,7 +50,8 @@ namespace TRT {
         MixMemory& copy_from_cpu(size_t offset, const void* src, 
                                 size_t copyed_bytes, cudaStream_t stream = nullptr);
 
-    private:
+    // private:
+    public:
         void* cpu_ = nullptr;
         size_t cpu_size_ = 0;
         bool owner_cpu_ = true;
@@ -139,8 +142,8 @@ namespace TRT {
             std::shared_ptr<MixMemory> get_data()             const {return data_;}
 
             bool is_stream_owner() const {return stream_owner_;}
-            CUStream get_stream() const{return stream_;}
-            Tensor& set_stream(CUStream stream, bool owner=false){stream_ = stream; stream_owner_ = owner; return *this;}
+            cudaStream_t get_stream() const{return stream_;}
+            Tensor& set_stream(cudaStream_t stream, bool owner=false){stream_ = stream; stream_owner_ = owner; return *this;}
     
             Tensor& synchronize();
             const char* shape_string() const{return shape_string_;}
@@ -156,7 +159,8 @@ namespace TRT {
             Tensor& adajust_memory_by_update_dims_or_type();
             void setup_data(std::shared_ptr<MixMemory> data);
     
-        private:
+        // private:
+        public:
             std::vector<int> shape_;
             std::vector<size_t> strides_;
             size_t bytes_    = 0;

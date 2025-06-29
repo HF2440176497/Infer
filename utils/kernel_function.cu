@@ -20,11 +20,12 @@ void __log_func(const char* file, int line, const char* fmt, ...) {
     va_list vl;
     va_start(vl, fmt);
     char buffer[2048];
-    string filename = file_name(file, true);
+    std::string filename = utils::file_name(file, true);  // 当前调用处的代码文件
     int n = snprintf(buffer, sizeof(buffer), "[%s:%d]: ", filename.c_str(), line);
     vsnprintf(buffer + n, sizeof(buffer) - n, fmt, vl);
     fprintf(stdout, "%s\n", buffer);
 }
+
 
 /**
  * @param src_area 像素位置数目
@@ -131,7 +132,7 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 
 	affine_project_device_kernel(&matrix, dst_x, dst_y, &src_x, &src_y);
 
-	float c0 = padding_value, c1 = padding_value, c2 = padding_value;
+	float c0 = pad_value, c1 = pad_value, c2 = pad_value;
 	if (src_x < -1 || src_x >= src_w || src_y < -1 || src_y >= src_h) {
 		// skip ...
 	} else {
@@ -141,9 +142,9 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 		int x_high = x_low + 1;
 
 		uint8_t const_values[] = {  // channels == 3
-			(uint8_t)padding_value, 
-			(uint8_t)padding_value, 
-			(uint8_t)padding_value }; 
+			(uint8_t)pad_value, 
+			(uint8_t)pad_value, 
+			(uint8_t)pad_value }; 
 
 		float ly = src_y - y_low;
 		float lx = src_x - x_low;
@@ -176,6 +177,12 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 		c1 = floorf(w1 * v1[1] + w2 * v2[1] + w3 * v3[1] + w4 * v4[1] + 0.5f);
 		c2 = floorf(w1 * v1[2] + w2 * v2[2] + w3 * v3[2] + w4 * v4[2] + 0.5f);
 	}  // end if-else
+
+	
+	// float* pdst = dst + (dy * dst_w + dx) * 3;
+    // pdst[0] = c0;
+    // pdst[1] = c1;
+    // pdst[2] = c2;
 
 	int area = dst_w * dst_h;
 	float *pdst_c0 = dst + dy * dst_w + dx;

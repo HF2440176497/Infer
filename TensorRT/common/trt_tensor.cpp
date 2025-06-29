@@ -3,27 +3,25 @@
 #include "trt_tensor.h"
 
 
-
 namespace TRT {
 
-    int data_type_size(DataType dt){
-        switch (dt) {
-            case DataType::Float: return sizeof(float);
-            case DataType::Int32: return sizeof(int);
-            case DataType::UInt8: return sizeof(uint8_t);
-            default: {
-                INFO("Not support dtype: %d", dt);
-                return -1;
-            }
-        }
-    }
+	int data_type_size(DataType dt){
+		switch (dt) {
+			case DataType::Float: return sizeof(float);
+			case DataType::Int32: return sizeof(int);
+			case DataType::UInt8: return sizeof(uint8_t);
+			default: {
+				INFO("Not support dtype: %d", dt);
+				return -1;
+			}
+		}
+	}
 
     inline static int get_device(int device_id){
         if(device_id != CURRENT_DEVICE_ID){
             CUDATools::check_device_id(device_id);
             return device_id;
         }
-
         CHECK(cudaGetDevice(&device_id));
         return device_id;
     }
@@ -62,7 +60,7 @@ namespace TRT {
     MixMemory& MixMemory::copy_from_cpu(size_t offset, const void* src, 
                                         size_t copyed_bytes, cudaStream_t stream) {
         if (offset >= gpu_size_) {
-            INFO("Offset location[%lld] >= bytes_[%lld], out of range", offset_location, bytes_);
+            INFO("Offset location[%lld] >= gpu_size_[%lld], out of range", offset, gpu_size_);
             return *this;
         }
         size_t remain_bytes = gpu_size_ - offset;
@@ -78,6 +76,9 @@ namespace TRT {
         release_all();
     }
 
+    /**
+     * 自动检测是否需要扩容
+     */
     void* MixMemory::gpu(size_t size) {
         if (gpu_size_ < size) {
             release_gpu();
@@ -216,7 +217,7 @@ namespace TRT {
     /**
      * data_ 会重现释放再引用
      */
-	void Tensor::reference_data(const vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, DataType dtype){
+	void Tensor::reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, DataType dtype){
 		dtype_ = dtype;
 		data_->reference_data(cpu_data, cpu_size, gpu_data, gpu_size);
 		setup_data(data_);  // 将成员传入
@@ -226,7 +227,7 @@ namespace TRT {
     void Tensor::setup_data(std::shared_ptr<MixMemory> data) {
         data_ = data;
         if (data_ == nullptr) {
-            data_ = make_shared<MixMemory>(device_id_);
+            data_ = std::make_shared<MixMemory>(device_id_);
         } else {
             device_id_ = data_->device_id();
         }
@@ -240,7 +241,7 @@ namespace TRT {
     }
 
     std::shared_ptr<Tensor> Tensor::clone() const {
-        auto new_tensor = make_shared<Tensor>(shape_, dtype_);
+        auto new_tensor = std::make_shared<Tensor>(shape_, dtype_);
         if (head_ == DataHead::Init) return new_tensor;
 
         if (head_ == DataHead::Host) {

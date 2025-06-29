@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     params.src_h = 2048;
     params.src_w = 2048;
 
-    std::vector<cv::Mat> imgs_batch = utils::load_images("../test_imgs");
+    std::vector<cv::Mat> imgs_batch = utils::load_images("../data/images");
 
     int dev = 0;
     CHECK(cudaGetDevice(&dev));
@@ -51,6 +51,22 @@ int main(int argc, char** argv) {
 		std::cerr << "init engine ocur errors " << std::endl;
 		return -1;
     }
+    
     p_yolo->task(imgs_batch);
+
+    // auto start_time = std::chrono::steady_clock::now();
+    // const auto duration = std::chrono::seconds(50);
+
+    // while (true) {
+    //     auto current_time = std::chrono::steady_clock::now();
+    //     auto elapsed = current_time - start_time;
+ 
+    //     if (elapsed >= duration) {
+    //         break;
+    //     }
+    //     p_yolo->task(imgs_batch);
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // }
+    // std::cout << "时间到" << std::endl;
 
 }

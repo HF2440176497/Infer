@@ -85,7 +85,7 @@ void PreProcess::compute() {
  * @details 拷贝输入图像到 pre_buffer
  */
 void PreProcess::compute(int ibatch, const cv::Mat& image,
-                        std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers
+                        std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers,
                         std::shared_ptr<TRT::Tensor> net_input) {
     if (dst_h == -1 || dst_w == -1) {  // init dst scale
         dst_h = net_input->height();
@@ -93,16 +93,42 @@ void PreProcess::compute(int ibatch, const cv::Mat& image,
     }
     src_w = image.cols;
     src_h = image.rows;
-    size_t image_size = src_w * src_w * 3;
+    size_t image_size = src_w * src_h * 3;  // bytes
 
-    pre_buffers[ibatch].gpu(image_size);
-    pre_buffers[ibatch].copy_from_cpu(0, image.data, image_size);
+    std::cout << "src_w: " << src_w 
+    << "; src_h: " << src_h 
+    << "; image_size: " << image_size << std::endl;
+
+    pre_buffers[ibatch]->gpu(image_size);
+    pre_buffers[ibatch]->copy_from_cpu(0, image.data, image_size);
 
     std::tuple<int, int> from{src_w, src_h};
     std::tuple<int, int> to{dst_w, dst_h};
     m_trans.compute(from, to);
 
     resize_dev(ibatch, pre_buffers[ibatch], net_input);
+   
+    auto current_offset = net_input->offset(ibatch);
+    // std::cout << "ibatch: " << ibatch << "; current_offset: "<< current_offset << std::endl;
+
+    // TODO: 检查 Tensor 
+    float* cur_image_buf = net_input->gpu<float>() + current_offset;
+
+    std::cout << "data_ gpu_size: " << net_input->data_->gpu_size_ <<
+    " gpu_: " << net_input->data_->gpu_ << 
+    " bytes_" << net_input->bytes_ <<
+    std::endl;
+
+    int64_t timestamp = utils::timestamp_ms();
+    std::string filename = std::to_string(timestamp) + ".png";
+
+    CHECK(cudaStreamSynchronize(stream_));
+    utils::save_float_image_chw(cur_image_buf, dst_w, dst_h, filename);
+
+    // cv::Mat img_uint8 = utils::floatCHW_BGR_to_Mat(cur_image_buf, dst_w, dst_h);
+    // if (!cv::imwrite(filename, img_uint8)) {
+    //     throw std::runtime_error("Failed to save image: " + filename);
+    // }
 }
 
 void PreProcess::set_stream(cudaStream_t stream, bool owner_stream) {
@@ -135,8 +161,6 @@ void PreProcess::resize_dev() {
         m_src_dev, src_w, src_h, src_area, src_volume,
         m_resize_dev, dst_w, dst_h, dst_area, dst_volume,
         batch_size, pad_value, m_trans.get_d2s());
-
-        
 }
 
 /**
@@ -148,7 +172,7 @@ void PreProcess::resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buff
     auto current_offset = net_input->offset(ibatch);
     INFO("current offset location [%lld]", current_offset);
     float* dst_dev = net_input->gpu<float>() + current_offset;
-    uint8_t* src_dev = pre_buffer.gpu();
+    uint8_t* src_dev = (uint8_t*)pre_buffer->gpu();  // MixMem 暂时是不支持类型指定的
 
     dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);

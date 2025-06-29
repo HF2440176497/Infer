@@ -1,12 +1,13 @@
 
 #include "common_include.h"
 
+#include "cuda_tools.h"
 
 namespace CUDATools {
 
     bool check_device_id(int device_id) {
         int device_count = -1;
-        checkCudaRuntime(cudaGetDeviceCount(&device_count));
+        CHECK(cudaGetDeviceCount(&device_count));
         if(device_id < 0 || device_id >= device_count){
             INFO("Invalid device id: %d, count = %d", device_id, device_count);
             return false;
@@ -16,19 +17,21 @@ namespace CUDATools {
 
     int current_device_id() {
         int device_id = 0;
-        checkCudaRuntime(cudaGetDevice(&device_id));
+        CHECK(cudaGetDevice(&device_id));
         return device_id;
     }
 
     std::string device_capability(int device_id) {
         cudaDeviceProp prop;
-        checkCudaRuntime(cudaGetDeviceProperties(&prop, device_id));
-        return iLogger::format("%d.%d", prop.major, prop.minor);
+        CHECK(cudaGetDeviceProperties(&prop, device_id));
+        std::ostringstream oss;
+        oss << prop.major << "." << prop.minor;
+        return oss.str();
     }
 
     std::string device_name(int device_id) {
         cudaDeviceProp prop;
-        checkCudaRuntime(cudaGetDeviceProperties(&prop, device_id));
+        CHECK(cudaGetDeviceProperties(&prop, device_id));
         return prop.name;
     }
 
@@ -53,5 +56,4 @@ namespace CUDATools {
         return oss.str();
     }
 
-};
-
+}

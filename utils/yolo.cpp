@@ -9,6 +9,7 @@ YOLO::Yolo::Yolo(const utils::InitParameter& params): m_param(params) {
 }
 
 YOLO::Yolo::~Yolo() {
+    p_pre = nullptr;
     CHECK(cudaFree(m_input_src_dev));
     CHECK(cudaFree(m_input_hwc_dev));
     if (stream_) {
@@ -21,19 +22,15 @@ YOLO::Yolo::~Yolo() {
  */
 bool YOLO::Yolo::init(const std::vector<uint8_t>& trt_file) {
     CHECK(cudaStreamCreate(&stream_));
-
-    // TODO: 临时设置固定尺寸的
-    std::vector<int> dims {m_param.batch_size, 3, m_param.dst_h, m_param.dst_w};
-    input_buffer_ = std::make_shared<TRT::Tensor>(dims);
-
     p_pre->set_stream(stream_);
-    p_pre->init();
+    // p_pre->init();
     return true;
 }
 
 
 /**
  * 将图像拷贝到已分配的显存
+ * TODO: 现在已经不需要
  */
 void YOLO::Yolo::copy(const std::vector<cv::Mat>& imgs_batch) {
     uint8_t* pi = m_input_src_dev;
@@ -46,7 +43,8 @@ void YOLO::Yolo::copy(const std::vector<cv::Mat>& imgs_batch) {
 
 
 /**
- * @param batch_size 实际 batch_size
+ * 动态调整队列尺寸
+ * @param batch_size 实际尺寸
  */
 void YOLO::Yolo::adjust_mem(int batch_size) {
     pre_buffers_.clear();
@@ -55,8 +53,9 @@ void YOLO::Yolo::adjust_mem(int batch_size) {
             pre_buffers_.push_back(std::make_shared<TRT::MixMemory>());
         }
     }
-    size_t input_numel = input_width_ * input_height_ * 3;
-    
+    // TODO: 动态设置尺寸
+    std::vector<int> dims {batch_size, 3, m_param.dst_h, m_param.dst_w};
+    input_buffer_ = std::make_shared<TRT::Tensor>(dims);  // 初始状态
 }
 
 /**

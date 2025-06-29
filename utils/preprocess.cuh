@@ -2,6 +2,7 @@
 
 #include "common_include.h"
 #include "utils.h"
+#include "common/trt_tensor.h"
 
 /**
  * 负责单张图像的仿射变换
@@ -36,7 +37,7 @@ public:
     void set_stream(cudaStream_t stream, bool owner_stream = false);
     void compute();
     void compute(int ibatch, const cv::Mat& image,
-                std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers
+                std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers,
                 std::shared_ptr<TRT::Tensor> net_input);
 
 private:

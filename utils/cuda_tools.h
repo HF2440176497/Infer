@@ -2,16 +2,15 @@
 #pragma once
 
 #include "common_include.h"
+#include "kernel_function.h"
 
-
-#define Assert(op)					 \
-	do{                              \
-		bool cond = !(!(op));        \
-		if(!cond){                   \
-			INFOF("Assert failed, " #op);  \
-		}                                  \
-	}while(false)
-
+#define Assert(op)                        \
+    do {                                  \
+        bool cond = !(!(op));             \
+        if (!cond) {                      \
+            INFO("Assert failed, " #op); \
+        }                                 \
+    } while (false)
 
 namespace CUDATools {
 
@@ -21,4 +20,4 @@ namespace CUDATools {
     std::string device_name(int device_id);
     std::string device_description();
 
-};
+}

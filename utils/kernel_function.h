@@ -1,18 +1,24 @@
 
 
 #pragma once
-#include "../utils/common_include.h"
-#include "../utils/utils.h"
-
-#define CHECK(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+#include "common_include.h"
+#include "utils.h"
 
 #define BLOCK_SIZE 8
 
-#define INFO(...) trt::__log_func(__FILE__, __LINE__, __VA_ARGS__)
-
-void __log_func(const char *file, int line, const char *fmt, ...);
-
+#define CHECK(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
 bool __check_cuda_runtime(cudaError_t code, const char* op, const char* file, int line);
+
+#define checkCudaKernel(...)                                                                         \
+    __VA_ARGS__;                                                                                     \
+    do{cudaError_t cudaStatus = cudaPeekAtLastError();                                               \
+    if (cudaStatus != cudaSuccess){                                                                  \
+        INFOE("launch failed: %s", cudaGetErrorString(cudaStatus));                                  \
+    }} while(0);
+
+
+#define INFO(...) __log_func(__FILE__, __LINE__, __VA_ARGS__)
+void __log_func(const char *file, int line, const char *fmt, ...);
 
 __global__
 void resize_device_kernel_batch(uint8_t* src, int src_w, int src_h, int src_area, int src_volume, 

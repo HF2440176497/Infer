@@ -1,5 +1,11 @@
 
 #pragma once
+
+#include <iostream>
+#include <chrono>
+#include <string>
+#include <sstream>
+
 #include "common_include.h"
 
 
@@ -102,8 +108,12 @@ namespace utils
     };
 
     std::vector<cv::Mat> load_images(const std::string& folderPath);
-    void save_float_image(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false);
     std::vector<uint8_t> load_model(const std::string& file);
+    int64_t timestamp_ms();
+    std::string file_name(const std::string& path, bool include_suffix);
 
+    void save_float_image(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false);
+    void save_float_image_chw(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false);
+    cv::Mat floatCHW_BGR_to_Mat(const float* data, int width, int height, bool normalize = false);
 
 }  // namespace utils

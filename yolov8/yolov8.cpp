@@ -23,8 +23,6 @@ void YOLOV8::task(std::vector<cv::Mat>& imgs_batch) {
     for (int i = 0; i < image_num; ++i) {
         preprocess(i, imgs_batch[i]);
     }
-
-
 }
 
 
@@ -37,7 +35,6 @@ void YOLOV8::preprocess() {
  * @param net_input 预处理结果
  */
 void YOLOV8::preprocess(int ibatch, const cv::Mat& image) {
-
     p_pre->compute(ibatch, image, pre_buffers_, input_buffer_);
 }
 
