@@ -50,8 +50,7 @@ namespace TRT {
         MixMemory& copy_from_cpu(size_t offset, const void* src, 
                                 size_t copyed_bytes, cudaStream_t stream = nullptr);
 
-    // private:
-    public:
+    private:
         void* cpu_ = nullptr;
         size_t cpu_size_ = 0;
         bool owner_cpu_ = true;
@@ -159,8 +158,8 @@ namespace TRT {
             Tensor& adajust_memory_by_update_dims_or_type();
             void setup_data(std::shared_ptr<MixMemory> data);
     
-        // private:
-        public:
+        private:
+        // public:
             std::vector<int> shape_;
             std::vector<size_t> strides_;
             size_t bytes_    = 0;

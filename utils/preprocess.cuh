@@ -1,8 +1,8 @@
 #pragma once
 
 #include "common_include.h"
-#include "utils.h"
 #include "common/trt_tensor.h"
+#include "utils.h"
 
 /**
  * 负责单张图像的仿射变换
@@ -43,9 +43,8 @@ public:
 private:
     void resize_dev();
     void resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buffer, std::shared_ptr<TRT::Tensor> net_input);
-    void channel_swap_dev();
-    void norm_dev();
-    void hwc2chw_dev();
+    void channel_swap_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
+    void norm_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
 
 public:
     size_t batch_size;
@@ -63,6 +62,7 @@ private:
     float* m_norm_dev;
     float* m_swap_dev;
     AffineTrans m_trans;
+    utils::Norm normalize_;
     cudaStream_t stream_;
     bool owner_stream_ = false;
 };

@@ -43,7 +43,7 @@ namespace utils
     {
         int num_class{ 80 };  // coco 
         std::vector<std::string> class_names;
-        std::vector<std::string> input_output_names;  // 
+        std::vector<std::string> input_output_names;
 
         bool dynamic_batch{ false };
         size_t batch_size;
@@ -107,13 +107,30 @@ namespace utils
         }
     };
 
+    enum class ChannelsArrange : int { RGB = 0, BGR = 1 };
+
+    enum class NormType : int { None = 0, MeanStd = 1, AlphaBeta = 2 };
+
+    struct Norm {
+        float mean[3];
+        float std[3];
+        float alpha, beta;
+        NormType type = NormType::None;
+
+        // out = (x * alpha - mean) / std
+        static Norm mean_std(const float mean[3], const float std[3], float alpha = 1 / 255.0f);
+
+        // out = x * alpha + beta
+        static Norm alpha_beta(float alpha, float beta = 0);
+        static Norm None();
+    };
+
     std::vector<cv::Mat> load_images(const std::string& folderPath);
     std::vector<uint8_t> load_model(const std::string& file);
     int64_t timestamp_ms();
     std::string file_name(const std::string& path, bool include_suffix);
 
-    void save_float_image(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false);
-    void save_float_image_chw(float* d_src, int dst_w, int dst_h, const std::string& save_path, bool normalize = false);
-    cv::Mat floatCHW_BGR_to_Mat(const float* data, int width, int height, bool normalize = false);
-
+    void save_float_image(float* d_src, int width, int height, const std::string& save_path, bool normalize = false);
+    void save_float_image_chw(float* d_src, int width, int height, const std::string& save_path, 
+                            ChannelsArrange order, bool normalize = false);
 }  // namespace utils

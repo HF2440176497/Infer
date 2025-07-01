@@ -61,15 +61,9 @@ PreProcess::~PreProcess() {
     CHECK(cudaFree(m_norm_dev));
 }
 
-/**
- * 初始化仿射变换相关
- */
 void PreProcess::init() {
-    std::tuple<int, int> from{src_w, src_h};
-    std::tuple<int, int> to{dst_w, dst_h};
-    m_trans.compute(from, to);
+    normalize_ = utils::Norm::alpha_beta(1 / 255.0f, 0.0f);
 }
-
 
 /**
  * TODO: 验证预处理
@@ -106,29 +100,20 @@ void PreProcess::compute(int ibatch, const cv::Mat& image,
     std::tuple<int, int> to{dst_w, dst_h};
     m_trans.compute(from, to);
 
-    resize_dev(ibatch, pre_buffers[ibatch], net_input);
-   
+    resize_dev(ibatch, pre_buffers[ibatch], net_input);  // out: CHW BGR
+    channel_swap_dev(ibatch, net_input, utils::ChannelsArrange::BGR);  // out: CHW RGB
+    norm_dev(ibatch, net_input, utils::ChannelsArrange::RGB);
+    
+    // TODO: 保存检查
     auto current_offset = net_input->offset(ibatch);
-    // std::cout << "ibatch: " << ibatch << "; current_offset: "<< current_offset << std::endl;
-
-    // TODO: 检查 Tensor 
     float* cur_image_buf = net_input->gpu<float>() + current_offset;
-
-    std::cout << "data_ gpu_size: " << net_input->data_->gpu_size_ <<
-    " gpu_: " << net_input->data_->gpu_ << 
-    " bytes_" << net_input->bytes_ <<
-    std::endl;
 
     int64_t timestamp = utils::timestamp_ms();
     std::string filename = std::to_string(timestamp) + ".png";
 
     CHECK(cudaStreamSynchronize(stream_));
-    utils::save_float_image_chw(cur_image_buf, dst_w, dst_h, filename);
-
-    // cv::Mat img_uint8 = utils::floatCHW_BGR_to_Mat(cur_image_buf, dst_w, dst_h);
-    // if (!cv::imwrite(filename, img_uint8)) {
-    //     throw std::runtime_error("Failed to save image: " + filename);
-    // }
+    utils::save_float_image_chw(cur_image_buf, dst_w, dst_h, filename,
+                                utils::ChannelsArrange::RGB, true);
 }
 
 void PreProcess::set_stream(cudaStream_t stream, bool owner_stream) {
@@ -170,9 +155,10 @@ void PreProcess::resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buff
                             std::shared_ptr<TRT::Tensor> net_input) {
 
     auto current_offset = net_input->offset(ibatch);
-    INFO("current offset location [%lld]", current_offset);
     float* dst_dev = net_input->gpu<float>() + current_offset;
     uint8_t* src_dev = (uint8_t*)pre_buffer->gpu();  // MixMem 暂时是不支持类型指定的
+
+    INFO("current offset location [%lld]", current_offset);
 
     dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);
@@ -190,22 +176,28 @@ void PreProcess::resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buff
 
 
 /**
- * 交换通道，目前是交换
+ * 交换通道
  */
-void PreProcess::channel_swap_dev() {
+void PreProcess::channel_swap_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
 
+    auto current_offset = net_input->offset(ibatch);
+    float* dst_dev = net_input->gpu<float>() + current_offset;
 
+    dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
+    swap_rb_channels_kernel_chw <<< grid_size, block_size, 0, stream_>>> (dst_dev, dst_w, dst_h, order);
 }
 
+/**
+ * 标准化 指定三通道排列
+ */
+void PreProcess::norm_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
+    auto current_offset = net_input->offset(ibatch);
+    float* dst_dev = net_input->gpu<float>() + current_offset;
 
-void PreProcess::norm_dev() {
+    dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-
-}
-
-
-void PreProcess::hwc2chw_dev() {
-
-
+    normalize_kernel_chw <<< grid_size, block_size, 0, stream_>>> (dst_dev, dst_w, dst_h, normalize_, order);
 }

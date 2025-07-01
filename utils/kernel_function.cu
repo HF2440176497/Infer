@@ -1,7 +1,6 @@
 
 #include <math.h>
 
-
 #include "kernel_function.h"
 #include "utils.h"
 
@@ -28,6 +27,7 @@ void __log_func(const char* file, int line, const char* fmt, ...) {
 
 
 /**
+ * 批量图片处理
  * @param src_area 像素位置数目
  * @param src_volume 包含通道数的像素数
  * @param martix dst2src 
@@ -178,7 +178,6 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 		c2 = floorf(w1 * v1[2] + w2 * v2[2] + w3 * v3[2] + w4 * v4[2] + 0.5f);
 	}  // end if-else
 
-	
 	// float* pdst = dst + (dy * dst_w + dx) * 3;
     // pdst[0] = c0;
     // pdst[1] = c1;
@@ -191,4 +190,90 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 	*pdst_c0 = c0;
 	*pdst_c1 = c1;
 	*pdst_c2 = c2;
+}
+
+
+/**
+ * 交换 RB 通道，每线程处理一个像素位置，原地保存
+ * 适用于 CHW 排列
+ * @param order src 的通道排列顺序
+ */
+__global__ 
+void swap_rb_channels_kernel_chw(float* src, int width, int height, utils::ChannelsArrange order) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;  // 行索引
+
+    if (x >= width || y >= height) {
+        return;
+    }
+    int image_size = width * height;
+	int r_pos, g_pos, b_pos;
+	if (order == utils::ChannelsArrange::RGB) {
+		r_pos = y * width + x;
+		g_pos = image_size + y * width + x;
+		b_pos = 2 * image_size + y * width + x;
+	} else if (order == utils::ChannelsArrange::BGR) {
+		b_pos = y * width + x;                   // B 通道的位置（第 0 个平面）
+		g_pos = image_size + y * width + x;      // G 通道的位置（第 1 个平面）
+		r_pos = 2 * image_size + y * width + x;  // R 通道的位置（第 2 个平面）
+	} else {
+		// INFO("swap_channels unsupported [%d]", order);
+		return;
+	}
+    float temp = src[b_pos];      // 保存 B
+    src[b_pos] = src[r_pos];      // B <- R
+    src[r_pos] = temp;            // R <- 原来的 B
+}
+
+/**
+ * 适用于 RGB 或者 BGR 的 CHW 排列的图片
+ * @param order src 的通道排列顺序
+ */
+__global__ 
+void normalize_kernel_chw(float* src, int width, int height, utils::Norm norm, utils::ChannelsArrange order) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;  // 行索引
+
+    int image_size = width * height;
+
+	float *src_r, *src_g, *src_b;
+    if (order == utils::ChannelsArrange::RGB) {
+        src_r = src + y * width + x;
+        src_g = src + image_size + y * width + x;
+        src_b = src + 2 * image_size + y * width + x;
+    } else if (order == utils::ChannelsArrange::BGR) {
+        src_b = src + y * width + x;                   // B 通道
+        src_g = src + image_size + y * width + x;      // G 通道
+        src_r = src + 2 * image_size + y * width + x;  // R 通道
+    } else {
+		// INFO("normalize_kernel unsupported [%d]", order);
+		return;
+	}
+    float r = *src_r;
+    float g = *src_g;
+    float b = *src_b;
+
+    if (norm.type == utils::NormType::MeanStd) {
+		r = (r * norm.alpha - norm.mean[0]) / norm.std[0];
+        g = (g * norm.alpha - norm.mean[1]) / norm.std[1];
+        b = (b * norm.alpha - norm.mean[2]) / norm.std[2];
+    } else if (norm.type == utils::NormType::AlphaBeta) {
+        r = r * norm.alpha + norm.beta;
+        g = g * norm.alpha + norm.beta;
+        b = b * norm.alpha + norm.beta;
+    }
+	// 按照输入排列的顺序保存输出
+	float *dst_r, *dst_g, *dst_b;
+	if (order == utils::ChannelsArrange::RGB) {
+		dst_r = src + y * width + x;
+		dst_g = src + image_size + y * width + x;
+		dst_b = src + 2 * image_size + y * width + x;
+	} else if (order == utils::ChannelsArrange::BGR) {
+		dst_b = src + y * width + x;
+		dst_g = src + image_size + y * width + x;
+		dst_r = src + 2 * image_size + y * width + x;
+	}
+    *dst_r = r;
+    *dst_g = g;
+    *dst_b = b;
 }

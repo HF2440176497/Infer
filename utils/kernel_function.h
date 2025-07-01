@@ -31,3 +31,9 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 
 __device__
 void affine_project_device_kernel(utils::AffineMat* matrix, int x, int y, float* proj_x, float* proj_y);
+
+__global__
+void swap_rb_channels_kernel_chw(float* src, int width, int height, utils::ChannelsArrange order);
+
+__global__ 
+void normalize_kernel_chw(float* src, int width, int height, utils::Norm norm, utils::ChannelsArrange order);
