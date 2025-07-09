@@ -1,30 +1,48 @@
 #pragma once
 
+// ==================== TensorRT Includes ====================
 #include <NvInfer.h>
-#include <cuda_device_runtime_api.h>
+
+// ==================== CUDA Includes ====================
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
-#include <device_atomic_functions.h>
+#include <cuda_device_runtime_api.h>
 #include <device_launch_parameters.h>
-#include <thrust/sort.h>
+#include <device_atomic_functions.h>
+#include <cuda_fp16.h>
 
+// ==================== Thrust Includes ====================
+#include <thrust/sort.h>
+#include <thrust/reduce.h>
+#include <thrust/transform.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
+// ==================== OpenCV Includes ====================
 #include <opencv2/opencv.hpp>
 
+// ==================== C Standard Library Includes ====================
 #include <cstdlib>
-#include <algorithm>
-#include <memory>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <filesystem>
-#include <stdexcept>
-#include <iomanip>
-
-#include <vector>
-#include <string>
-
+#include <cstdint>
 #include <stdio.h>
+
+// ==================== C++ Standard Library Includes ====================
+#include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+#include <queue>
+#include <map>
+
+// ==================== Other Includes ====================
+// 

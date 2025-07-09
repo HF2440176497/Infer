@@ -5,17 +5,77 @@
 
 namespace TRT {
 
-	int data_type_size(DataType dt){
+	int data_type_size(TRT::DataType dt) {
 		switch (dt) {
-			case DataType::Float: return sizeof(float);
-			case DataType::Int32: return sizeof(int);
-			case DataType::UInt8: return sizeof(uint8_t);
+			case TRT::DataType::Float: return sizeof(float);
+            case TRT::DataType::Float16: return sizeof(__half);
+			case TRT::DataType::Int32: return sizeof(int);
+            case TRT::DataType::Int8: return sizeof(int8_t);
+			case TRT::DataType::UInt8: return sizeof(uint8_t);
 			default: {
 				INFO("Not support dtype: %d", dt);
 				return -1;
 			}
 		}
 	}
+
+    int data_type_size(nvinfer1::DataType dt) {
+		switch (dt) {
+            case nvinfer1::DataType::kFLOAT: return sizeof(float);
+            case nvinfer1::DataType::kHALF: return sizeof(__half);
+            case nvinfer1::DataType::kINT32: return sizeof(int);
+            case nvinfer1::DataType::kINT8: return sizeof(int8_t);
+            case nvinfer1::DataType::kUINT8: return sizeof(uint8_t);
+			default: {
+				INFO("Not support dtype: %d", dt);
+				return -1;
+			}
+		}
+	}
+
+    const char* data_type_string(TRT::DataType dt){
+		switch(dt){
+			case TRT::DataType::Float: return "Float32";
+			case TRT::DataType::Float16: return "Float16";
+			case TRT::DataType::Int32: return "Int32";
+            case TRT::DataType::Int8: return "Int8";
+			case TRT::DataType::UInt8: return "UInt8";
+			default: return "Unknow";
+		}
+	}
+
+    const char* data_type_string(nvinfer1::DataType dt) {
+        switch (dt) {
+            case nvinfer1::DataType::kFLOAT: return "kFLOAT";
+            case nvinfer1::DataType::kHALF: return "kHALF";
+            case nvinfer1::DataType::kINT32: return "kINT32";
+            case nvinfer1::DataType::kINT8: return "kINT8";
+            case nvinfer1::DataType::kUINT8: return "kUINT8";
+            default: return "Unknown";
+        }
+    }
+
+    nvinfer1::DataType to_tensorRT_datatype(TRT::DataType dt) {
+        switch (dt) {
+            case TRT::DataType::Float: return nvinfer1::DataType::kFLOAT;
+            case TRT::DataType::Float16: return nvinfer1::DataType::kHALF;
+            case TRT::DataType::Int32: return nvinfer1::DataType::kINT32;
+            case TRT::DataType::Int8:  return nvinfer1::DataType::kINT8;
+            case TRT::DataType::UInt8: return nvinfer1::DataType::kUINT8;
+            default: throw std::runtime_error("Unsupported type for TensorRT");
+        }
+    }
+     
+    TRT::DataType to_tensor_datatype(nvinfer1::DataType dt) {
+        switch (dt) {
+            case nvinfer1::DataType::kFLOAT: return TRT::DataType::Float;
+            case nvinfer1::DataType::kHALF: return TRT::DataType::Float16;
+            case nvinfer1::DataType::kINT32: return TRT::DataType::Int32;
+            case nvinfer1::DataType::kINT8: return case TRT::DataType::Int8;
+            case nvinfer1::DataType::kUINT8: return case TRT::DataType::UInt8;
+            default: throw std::runtime_error("Unsupported TensorRT type");
+        }
+    }
 
     inline static int get_device(int device_id){
         if(device_id != CURRENT_DEVICE_ID){
@@ -102,7 +162,7 @@ namespace TRT {
 
     void MixMemory::release_cpu() {
         if (cpu_) {
-            if(owner_cpu_){
+            if (owner_cpu_) {
                 CHECK(cudaFreeHost(cpu_));
             }
             cpu_ = nullptr;
@@ -112,7 +172,7 @@ namespace TRT {
 
     void MixMemory::release_gpu() {
         if (gpu_) {
-            if(owner_gpu_){
+            if (owner_gpu_) {
                 CHECK(cudaFree(gpu_));
             }
             gpu_ = nullptr;
@@ -134,41 +194,7 @@ namespace TRT {
         }
     }
 
-    const char* data_type_string(DataType dt){
-		switch(dt){
-			case DataType::Float: return "Float32";
-			case DataType::Float16: return "Float16";
-			case DataType::Int32: return "Int32";
-			case DataType::UInt8: return "UInt8";
-			default: return "Unknow";
-		}
-	}
-
-    Tensor::Tensor(int n, int c, int h, int w, DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
-		this->dtype_ = dtype;
-		this->device_id_ = get_device(device_id);
-		descriptor_string_[0] = 0;
-		setup_data(data);
-		resize(n, c, h, w);
-	}
-
-	Tensor::Tensor(const std::vector<int>& dims, DataType dtype, std::shared_ptr<MixMemory> data, int device_id){
-		this->dtype_ = dtype;
-		this->device_id_ = get_device(device_id);
-		descriptor_string_[0] = 0;
-		setup_data(data);
-		resize(dims);
-	}
-
-	Tensor::Tensor(int ndims, const int* dims, DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
-		this->dtype_ = dtype;
-		this->device_id_ = get_device(device_id);
-		descriptor_string_[0] = 0;
-		setup_data(data);
-		resize(ndims, dims);
-	}
-
-	Tensor::Tensor(DataType dtype, std::shared_ptr<MixMemory> data, int device_id){
+    Tensor::Tensor(nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id){
 		shape_string_[0] = 0;
 		descriptor_string_[0] = 0;
 		this->device_id_ = get_device(device_id);
@@ -176,9 +202,121 @@ namespace TRT {
 		setup_data(data);
 	}
 
+    Tensor::Tensor(int n, int c, int h, int w, nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
+		this->dtype_ = dtype;
+		this->device_id_ = get_device(device_id);
+		descriptor_string_[0] = 0;
+		setup_data(data);
+		resize(n, c, h, w);  // resize(int ndims, const int* dims); dims = [n, c, h, w]
+	}
+
+	Tensor::Tensor(int ndims, const int* dims, nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
+		this->dtype_ = dtype;
+		this->device_id_ = get_device(device_id);
+		descriptor_string_[0] = 0;
+		setup_data(data);
+		resize(ndims, dims);
+	}
+
+    Tensor::Tensor(const std::vector<int>& dims, nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id){
+		this->dtype_ = dtype;
+		this->device_id_ = get_device(device_id);
+		descriptor_string_[0] = 0;
+		setup_data(data);
+		resize(dims);
+	}
+
+    /**
+     * 根据模型相关信息 创建需要的维度
+     */
+    Tensor::Tensor(nvinfer1::Dims dims, nvinfer1::DataType dtype, nvinfer1::TensorFormat format, std::shared_ptr<MixMemory> data, int device_id) {
+		this->dtype_ = dtype;
+		this->device_id_ = get_device(device_id);
+		descriptor_string_[0] = 0;
+		setup_data(data);
+        std::vector<int> dims_vec {};
+        if (format == TensorFormat::kLINEAR) {
+            dims_vec.push_back(dims.d[0]);
+            dims_vec.push_back(dims.d[1]);
+            dims_vec.push_back(dims.d[2]);
+            dims_vec.push_back(dims.d[3]);
+        } else if (format == TensorFormat::kCHW2) {
+            dims_vec.push_back(dims.d[0]);
+            dims_vec.push_back(div_up(dims.d[1], 2));
+            dims_vec.push_back(dims.d[2]);
+            dims_vec.push_back(dims.d[3]);
+            dims_vec.push_back(2);
+        } else if (format == TensorFormat::kCHW4) {
+            dims_vec.push_back(dims.d[0]);
+            dims_vec.push_back(div_up(dims.d[1], 4));
+            dims_vec.push_back(dims.d[2]);
+            dims_vec.push_back(dims.d[3]);
+            dims_vec.push_back(4);
+        } else if (format == TensorFormat::kCHW32) {
+            dims_vec.push_back(dims.d[0]);
+            dims_vec.push_back(div_up(dims.d[1], 32));
+            dims_vec.push_back(dims.d[2]);
+            dims_vec.push_back(dims.d[3]);
+            dims_vec.push_back(32);
+        } else if (format == TensorFormat::kHWC8) {
+            dims_vec.push_back(dims.d[0]);
+            dims_vec.push_back(dims.d[2]);
+            dims_vec.push_back(dims.d[3]);
+            dims_vec.push_back(div_up(dims.d[1], 8) * 8);
+        }
+        resize(dims_vec);
+    }
+
 	Tensor::~Tensor() {
 		release();
 	}
+
+    int Tensor::batch() const {
+        return shape_[0];
+    }
+
+    // 注意：除了 kLINEAR，其他类型不代表真实宽度、高度
+    inline int channel() const {
+        switch (format_) {
+            case nvinfer1::TensorFormat::kLINEAR:
+            case nvinfer1::TensorFormat::kCHW2:
+            case nvinfer1::TensorFormat::kCHW4:
+            case nvinfer1::TensorFormat::kCHW32:
+                return shape_[1];
+            case nvinfer1::TensorFormat::kHWC8:
+                return shape_[3];
+            default:
+                INFO("Unsupported tensor format");
+        }
+    }
+
+    inline int height() const {
+        switch (format_) {
+            case nvinfer1::TensorFormat::kLINEAR:
+            case nvinfer1::TensorFormat::kCHW2:
+            case nvinfer1::TensorFormat::kCHW4:
+            case nvinfer1::TensorFormat::kCHW32:
+                return shape_[2];
+            case nvinfer1::TensorFormat::kHWC8:
+                return shape_[1];
+            default:
+                INFO("Unsupported tensor format");
+        }
+    }
+
+    inline int width() const {
+        switch (format_) {
+            case nvinfer1::TensorFormat::kLINEAR:
+            case nvinfer1::TensorFormat::kCHW2:
+            case nvinfer1::TensorFormat::kCHW4:
+            case nvinfer1::TensorFormat::kCHW32:
+                return shape_[3];
+            case TensorFormat::kHWC8:
+                return shape_[2];
+            default:
+                INFO("Unsupported tensor format");
+        }
+    }
 
     const char* Tensor::descriptor() const{
 		char* descriptor_ptr = (char*)descriptor_string_;
@@ -375,14 +513,15 @@ namespace TRT {
     }
 
     Tensor& Tensor::resize_single_dim(int idim, int size){
-
 		Assert(idim >= 0 && idim < shape_.size());
-
 		auto new_shape = shape_;
 		new_shape[idim] = size;
 		return resize(new_shape);
 	}
 
+    /**
+     * @details dims -1 表示采用对应的原维度，此时要求 dims.size == shape_.size
+     */
     Tensor& Tensor::resize(int ndims, const int* dims) {
         std::vector<int> setup_dims(ndims);
         for (int i = 0; i < ndims; ++i) {
@@ -456,6 +595,5 @@ namespace TRT {
 		}
 		return *this;
 	}
-
 
 };

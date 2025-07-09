@@ -2,8 +2,8 @@
 #include <vector>
 #include <string>
 
-#include "utils/utils.h"
-#include "utils/common_include.h"
+#include "utils.h"
+#include "common_include.h"
 
 #include "yolov8.h"
 

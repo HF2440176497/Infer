@@ -2,7 +2,7 @@
 
 #pragma once
 #include "utils/yolo.h"
-#include "utils/utils.h"
+#include "utils.h"
 
 #include "common/trt_tensor.h"
 
