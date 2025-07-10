@@ -33,7 +33,7 @@ namespace TRT {
 		}
 	}
 
-    const char* data_type_string(TRT::DataType dt){
+    const char* data_type_string(TRT::DataType dt) {
 		switch(dt){
 			case TRT::DataType::Float: return "Float32";
 			case TRT::DataType::Float16: return "Float16";
@@ -71,8 +71,8 @@ namespace TRT {
             case nvinfer1::DataType::kFLOAT: return TRT::DataType::Float;
             case nvinfer1::DataType::kHALF: return TRT::DataType::Float16;
             case nvinfer1::DataType::kINT32: return TRT::DataType::Int32;
-            case nvinfer1::DataType::kINT8: return case TRT::DataType::Int8;
-            case nvinfer1::DataType::kUINT8: return case TRT::DataType::UInt8;
+            case nvinfer1::DataType::kINT8: return TRT::DataType::Int8;
+            case nvinfer1::DataType::kUINT8: return TRT::DataType::UInt8;
             default: throw std::runtime_error("Unsupported TensorRT type");
         }
     }
@@ -235,30 +235,30 @@ namespace TRT {
 		descriptor_string_[0] = 0;
 		setup_data(data);
         std::vector<int> dims_vec {};
-        if (format == TensorFormat::kLINEAR) {
+        if (format == nvinfer1::TensorFormat::kLINEAR) {
             dims_vec.push_back(dims.d[0]);
             dims_vec.push_back(dims.d[1]);
             dims_vec.push_back(dims.d[2]);
             dims_vec.push_back(dims.d[3]);
-        } else if (format == TensorFormat::kCHW2) {
+        } else if (format == nvinfer1::TensorFormat::kCHW2) {
             dims_vec.push_back(dims.d[0]);
             dims_vec.push_back(div_up(dims.d[1], 2));
             dims_vec.push_back(dims.d[2]);
             dims_vec.push_back(dims.d[3]);
             dims_vec.push_back(2);
-        } else if (format == TensorFormat::kCHW4) {
+        } else if (format == nvinfer1::TensorFormat::kCHW4) {
             dims_vec.push_back(dims.d[0]);
             dims_vec.push_back(div_up(dims.d[1], 4));
             dims_vec.push_back(dims.d[2]);
             dims_vec.push_back(dims.d[3]);
             dims_vec.push_back(4);
-        } else if (format == TensorFormat::kCHW32) {
+        } else if (format == nvinfer1::TensorFormat::kCHW32) {
             dims_vec.push_back(dims.d[0]);
             dims_vec.push_back(div_up(dims.d[1], 32));
             dims_vec.push_back(dims.d[2]);
             dims_vec.push_back(dims.d[3]);
             dims_vec.push_back(32);
-        } else if (format == TensorFormat::kHWC8) {
+        } else if (format == nvinfer1::TensorFormat::kHWC8) {
             dims_vec.push_back(dims.d[0]);
             dims_vec.push_back(dims.d[2]);
             dims_vec.push_back(dims.d[3]);
@@ -276,7 +276,7 @@ namespace TRT {
     }
 
     // 注意：除了 kLINEAR，其他类型不代表真实宽度、高度
-    inline int channel() const {
+    int Tensor::channel() const {
         switch (format_) {
             case nvinfer1::TensorFormat::kLINEAR:
             case nvinfer1::TensorFormat::kCHW2:
@@ -290,7 +290,7 @@ namespace TRT {
         }
     }
 
-    inline int height() const {
+    int Tensor::height() const {
         switch (format_) {
             case nvinfer1::TensorFormat::kLINEAR:
             case nvinfer1::TensorFormat::kCHW2:
@@ -304,14 +304,14 @@ namespace TRT {
         }
     }
 
-    inline int width() const {
+    int Tensor::width() const {
         switch (format_) {
             case nvinfer1::TensorFormat::kLINEAR:
             case nvinfer1::TensorFormat::kCHW2:
             case nvinfer1::TensorFormat::kCHW4:
             case nvinfer1::TensorFormat::kCHW32:
                 return shape_[3];
-            case TensorFormat::kHWC8:
+            case nvinfer1::TensorFormat::kHWC8:
                 return shape_[2];
             default:
                 INFO("Unsupported tensor format");
@@ -355,7 +355,8 @@ namespace TRT {
     /**
      * data_ 会重现释放再引用
      */
-	void Tensor::reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, DataType dtype){
+	void Tensor::reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, 
+                                void* gpu_data, size_t gpu_size, nvinfer1::DataType dtype) {
 		dtype_ = dtype;
 		data_->reference_data(cpu_data, cpu_size, gpu_data, gpu_size);
 		setup_data(data_);  // 将成员传入

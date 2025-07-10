@@ -26,6 +26,9 @@ namespace TRT {
     int data_type_size(DataType dt);
     int data_type_size(nvinfer1::DataType dt);
 
+    const char* data_type_string(TRT::DataType dt);
+    const char* data_type_string(nvinfer1::DataType dt);
+
     static int32_t div_up(int32_t a, int32_t b) {
         return (a + b - 1) / b;
     }
@@ -80,7 +83,7 @@ namespace TRT {
                         std::shared_ptr<MixMemory> data = nullptr, int device_id = CURRENT_DEVICE_ID);
         explicit Tensor(const std::vector<int>& dims, nvinfer1::DataType dtype = nvinfer1::DataType::kFLOAT,
                         std::shared_ptr<MixMemory> data = nullptr, int device_id = CURRENT_DEVICE_ID);
-        explicit Tensor(nvinfer1::Dims dims, nvinfer1::DataType dtype = nvinfer1::DataType::KFLOAT,
+        explicit Tensor(nvinfer1::Dims dims, nvinfer1::DataType dtype = nvinfer1::DataType::kFLOAT,
                         nvinfer1::TensorFormat     format = nvinfer1::TensorFormat::kLINEAR,
                         std::shared_ptr<MixMemory> data = nullptr, int device_id = CURRENT_DEVICE_ID);
 
@@ -91,10 +94,10 @@ namespace TRT {
         inline int size(int index) const { return shape_[index]; }
         inline int shape(int index) const { return shape_[index]; }
 
-        inline int batch() const;
-        inline int channel() const;
-        inline int height() const;
-        inline int width() const;
+        int batch() const;
+        int channel() const;
+        int height() const;
+        int width() const;
 
         inline nvinfer1::DataType         type() const { return dtype_; }
         inline const std::vector<int>&    dims() const { return shape_; }
@@ -169,7 +172,7 @@ namespace TRT {
         Tensor& copy_from_gpu(size_t offset, const void* src, size_t num_element, int device_id = CURRENT_DEVICE_ID);
         Tensor& copy_from_cpu(size_t offset, const void* src, size_t num_element);
 
-        void    reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, DataType dtype);
+        void    reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, nvinfer1::DataType dtype);
 
     private:
         Tensor& compute_shape_string();
@@ -178,7 +181,7 @@ namespace TRT {
 
     private:
         nvinfer1::TensorFormat     format_ {nvinfer1::TensorFormat::kLINEAR};
-        nvinfer1::DataType         dtype_ {nvinfer1::DataType::KFLOAT};
+        nvinfer1::DataType         dtype_ {nvinfer1::DataType::kFLOAT};
         std::vector<int>           shape_;
         std::vector<size_t>        strides_;
         size_t                     bytes_ = 0;

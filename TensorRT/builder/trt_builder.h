@@ -3,6 +3,6 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include <infer/trt_infer.hpp>
+#include "infer/trt_infer.h"
 
 

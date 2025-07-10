@@ -50,6 +50,7 @@ target_include_directories(main PRIVATE
     ${PROJECT_SOURCE_DIR}/utils
     ${PROJECT_SOURCE_DIR}/TensorRT
     ${PROJECT_SOURCE_DIR}/TensorRT/common
+    ${PROJECT_SOURCE_DIR}/TensorRT/infer
     ${OpenCV_INCLUDE_DIRS}
     ${CUDA_TOOLKIT_ROOT_DIR}/include
 )

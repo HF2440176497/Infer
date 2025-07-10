@@ -18,6 +18,8 @@ struct TensorShapeRange {
     nvinfer1::Dims fixDims_;
     bool           dynamic_batch_ = false;
 
+    TensorShapeRange() = default;
+
     explicit TensorShapeRange(const nvinfer1::Dims& minDims, const nvinfer1::Dims& optDims,
                               const nvinfer1::Dims& maxDims)
         : minDims_(minDims), optDims_(optDims), maxDims_(maxDims), dynamic_batch_(true) {
@@ -60,16 +62,8 @@ public:
     virtual void         synchronize() = 0;
     virtual size_t       get_device_memory_size() = 0;
 
-    virtual std::string  get_input_name(int index = 0) = 0;
-    virtual std::string  get_output_name(int index = 0) = 0;
-    virtual bool         is_input_name(const std::string& name) = 0;
-    virtual bool         is_output_name(const std::string& name) = 0;
-    virtual int          num_input() = 0;
-    virtual int          num_output() = 0;
     virtual void         print() = 0;
     virtual int          device() = 0;
-
-
 };  // class Infer
 
 DeviceMemorySummary    get_current_device_summary();

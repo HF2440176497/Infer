@@ -43,6 +43,40 @@ public:
         return pro.get_future().get();
     }
 
+    virtual std::vector<std::shared_future<Output>> commits(const std::vector<Input>& inputs) {
+        int              batch_size = std::min((int)inputs.size(), this->tensor_allocator_->capacity());
+        std::vector<Job> jobs(inputs.size());
+        std::vector<std::shared_future<Output>> results(inputs.size());  // 异步等待结果
+        this->adjust_mem(inputs);
+
+        int nepoch = (inputs.size() + batch_size - 1) / batch_size;
+        for (int epoch = 0; epoch < nepoch; ++epoch) {
+            int begin = epoch * batch_size;
+            int end = std::min((int)inputs.size(), begin + batch_size);  // 不要超出范围
+
+            for (int i = begin; i < end; ++i) {
+                Job& job = jobs[i];
+                job.pro = std::make_shared<std::promise<Output>>();
+                if (!preprocess(job, inputs[i])) {
+                    INFO("preprocess error happened");
+                    job.pro->set_value(Output());
+                }
+            }
+            // preproces complete
+            {
+                std::unique_lock<std::mutex> l(jobs_lock_);
+                for (int i = begin; i < end; ++i) {
+                    jobs_.emplace(std::move(jobs[i]));
+                };
+            }
+            cond_.notify_one();
+            for (int i = begin; i < end; ++i) {
+                results[i] = job.pro->get_future();
+            }
+        }
+        return results;
+    }
+
     virtual bool get_jobs_and_wait(std::vector<Job>& fetch_jobs, int max_size) {
         std::unique_lock<std::mutex> l(jobs_lock_);
         cond_.wait(l, [&]() { return !run_ || !jobs_.empty(); });
@@ -73,6 +107,7 @@ public:
 protected:
     virtual void worker(std::promise<bool>& result) = 0;
     virtual bool preprocess(Job& job, const Input& input) = 0;
+    virtual void adjust_mem(const std::vector<Input>& inputs) = 0;
 
 protected:
     StartParam start_param_;
