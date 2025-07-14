@@ -55,15 +55,18 @@ struct TensorShapeRange {
 
 class Infer {
 public:
-    virtual void         forward(bool sync = true) = 0;
-    virtual int          get_max_batch_size() = 0;
-    virtual void         set_stream(cudaStream_t stream) = 0;
-    virtual cudaStream_t get_stream() = 0;
-    virtual void         synchronize() = 0;
-    virtual size_t       get_device_memory_size() = 0;
+    virtual void forward(bool sync = true) = 0;
+    virtual int  get_max_batch_size() = 0;
 
-    virtual void         print() = 0;
-    virtual int          device() = 0;
+    virtual std::shared_ptr<Tensor> get_input() = 0;
+    virtual std::shared_ptr<Tensor> get_output() = 0;
+    virtual void                    set_stream(cudaStream_t stream) = 0;
+    virtual cudaStream_t            get_stream() = 0;
+    virtual void                    synchronize() = 0;
+    virtual size_t                  get_device_memory_size() = 0;
+
+    virtual void print() = 0;
+    virtual int  device() = 0;
 };  // class Infer
 
 DeviceMemorySummary    get_current_device_summary();

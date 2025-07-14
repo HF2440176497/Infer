@@ -10,7 +10,7 @@
 class AffineTrans {
 public:
     AffineTrans();
-    ~AffineTrans();
+    virtual ~AffineTrans();
 
 public:
     void compute(const std::tuple<int, int>& from, 
@@ -29,38 +29,26 @@ class PreProcess {
     enum class ChannelType : int { None = 0, SwapRB = 1 };
 
 public:
-    PreProcess(utils::InitParameter params, uint8_t* src, float* dst);
-    ~PreProcess();
+    PreProcess();
+    virtual ~PreProcess();
 
 public:
-    void init();
     void set_stream(cudaStream_t stream, bool owner_stream = false);
-    void compute();
-    void compute(int ibatch, const cv::Mat& image,
-                std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers,
-                std::shared_ptr<TRT::Tensor> net_input);
+    void compute(const cv::Mat& image, std::shared_ptr<TRT::MixMemory> pre_buffer,
+                 std::shared_ptr<TRT::Tensor> net_input);
 
 private:
-    void resize_dev();
-    void resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buffer, std::shared_ptr<TRT::Tensor> net_input);
-    void channel_swap_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
-    void norm_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
+    void resize_dev(std::shared_ptr<TRT::MixMemory> pre_buffer, std::shared_ptr<TRT::Tensor> net_input);
+    void channel_swap_dev(std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
+    void norm_dev(std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order);
 
 public:
-    size_t batch_size;
     int src_w = -1;
     int src_h = -1;
     int dst_w = -1;
     int dst_h = -1;
 
 private:
-    uint8_t* m_src_dev;
-    float* m_hwc_dev;
-
-private:
-    float* m_resize_dev;
-    float* m_norm_dev;
-    float* m_swap_dev;
     AffineTrans m_trans;
     utils::Norm normalize_;
     cudaStream_t stream_;

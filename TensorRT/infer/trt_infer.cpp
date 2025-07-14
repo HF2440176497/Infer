@@ -108,7 +108,7 @@ private:
     std::shared_ptr<Tensor>              inputs_;
     std::shared_ptr<Tensor>              outputs_;
     std::vector<int>                     all_ordered_index_;
-    int                                  inputs_ordered_index_;
+    int                                  inputs_ordered_index_;  // save input bind index
     int                                  outputs_ordered_index_;
     std::string                          inputs_name_;
     std::string                          outputs_name_;
@@ -118,16 +118,18 @@ private:
     bool                                              has_static_input_batch_ = false;  // 是否存在
     bool                                              has_dynamic_input_batch_ = false;
 
-// override 
+// override
 public:
-    virtual void         forward(bool sync = true) override;
-    virtual int          get_max_batch_size() override;
-    virtual void         set_stream(cudaStream_t stream) override;
-    virtual cudaStream_t get_stream() override;
-    virtual void         synchronize() override;
-    virtual void         print() override;
-    virtual int          device() override;
-    virtual size_t       get_device_memory_size() override;
+    virtual void                    forward(bool sync = true) override;
+    virtual int                     get_max_batch_size() override;
+    virtual std::shared_ptr<Tensor> get_input() override;
+    virtual std::shared_ptr<Tensor> get_output() override;
+    virtual void                    set_stream(cudaStream_t stream) override;
+    virtual cudaStream_t            get_stream() override;
+    virtual void                    synchronize() override;
+    virtual void                    print() override;
+    virtual int                     device() override;
+    virtual size_t                  get_device_memory_size() override;
 };
 
 InferImpl::~InferImpl() {
@@ -155,7 +157,7 @@ bool InferImpl::load(const std::string& file) {
         context_.reset();
         return false;
     }
-    cudaGetDevice(&device_);
+    cudaGetDevice(&device_);  // 先前由外部设置，此处读取保存为成员变量
     build_engine_input_and_outputs_map();
     return true;
 }
@@ -188,7 +190,6 @@ std::shared_ptr<std::vector<uint8_t>> InferImpl::serial_engine() {
  * 根据模型信息保存映射
  */
 void InferImpl::build_engine_input_and_outputs_map() {
-    this->context_.reset();
     this->inputs_.reset();
     this->outputs_.reset();
     this->all_ordered_index_.clear();
@@ -203,7 +204,6 @@ void InferImpl::build_engine_input_and_outputs_map() {
         if (io_mode == TensorIOMode::kINPUT) {
             inputs_name_ = bind_name;
             inputs_ordered_index_ = all_ordered_index_.size();
-            
         } else if (io_mode == TensorIOMode::kOUTPUT) {
             outputs_name_ = bind_name;
             outputs_ordered_index_ = all_ordered_index_.size();
@@ -217,6 +217,7 @@ void InferImpl::build_engine_input_and_outputs_map() {
         INFO("Model should has one input and one output %d", all_ordered_index_.size());
         return;
     }
+    // analysis model input shape
     auto dims = context_->engine_->getTensorShape(inputs_name_.c_str());
     if (dims.d[0] == -1) {
         nvinfer1::Dims min_dims =
@@ -226,7 +227,7 @@ void InferImpl::build_engine_input_and_outputs_map() {
         nvinfer1::Dims max_dims =
             context_->engine_->getProfileShape(inputs_name_.c_str(), opt_profie_index, nvinfer1::OptProfileSelector::kMAX);
         inputs_shape_ = TensorShapeRange(min_dims, opt_dims, max_dims);
-    } else {
+    } else {  // static shape
         inputs_shape_ = TensorShapeRange(dims);
     }
     auto max_batch_size = get_max_batch_size();
@@ -262,6 +263,15 @@ void InferImpl::forward(bool sync) {
     if (sync) {
         synchronize();
     }
+}
+
+
+std::shared_ptr<Tensor> InferImpl::get_input() {
+    return inputs_;
+}
+
+std::shared_ptr<Tensor> InferImpl::get_output() {
+    return outputs_;
 }
 
 /**
@@ -372,14 +382,13 @@ void InferImpl::print() {
     INFO("\tBase device: %s", CUDATools::device_description().c_str());
     // INFO("\tOptimization Profiles num: %d", this->context_->engine_->getNbOptimizationProfiles());
     INFO("\tMax Batch Size: %d", this->get_max_batch_size());
-    INFO("\tInput bind name: %s : shape {%s}, %s", inputs_name_.c_str(), inputs_->shape_string(), data_type_size(inputs_->type()));
+    INFO("\tInput bind name: %s : shape {%s}, %s", inputs_name_.c_str(), inputs_->shape_string(), data_type_string(inputs_->type()));
     INFO("\tOutput bind name: %s : shape {%s}, %s", outputs_name_.c_str(), outputs_->shape_string(), data_type_string(outputs_->type()));
     
 }
 
 size_t InferImpl::get_device_memory_size() {
-    EngineContext* context = (EngineContext*)this->context_.get();
-    return context->context_->getEngine().getDeviceMemorySizeV2();
+    return context_->context_->getEngine().getDeviceMemorySizeV2();  // getEngine return ICudaEngine
 }
 
 int InferImpl::device() { return device_; }
@@ -389,7 +398,10 @@ int InferImpl::device() { return device_; }
  */
 std::shared_ptr<Infer> load_infer(const std::string& file) {
     std::shared_ptr<InferImpl> Infer(new InferImpl());
-    if (!Infer->load(file)) Infer.reset();
+    if (!Infer->load(file)) {
+        INFO("Infer Load failed");
+        Infer.reset();
+    }
     return Infer;
 }
 

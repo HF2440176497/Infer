@@ -24,6 +24,7 @@
 // ==================== C Standard Library Includes ====================
 #include <cstdlib>
 #include <cstdint>
+#include <cstdarg>
 #include <stdio.h>
 
 // ==================== C++ Standard Library Includes ====================
@@ -43,6 +44,8 @@
 #include <vector>
 #include <queue>
 #include <map>
+#include <tuple>
+#include <future>
 
 // ==================== Other Includes ====================
 // 

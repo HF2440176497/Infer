@@ -37,48 +37,43 @@ namespace utils
             "aeroplane","bicycle","bird","boat","bottle","bus","car","cat","chair","cow","diningtable",
             "dog","horse","motorbike","person","pottedplant","sheep","sofa","train","tvmonitor"
         };
-    }
+    }  // namespace dataSets
 
-    struct InitParameter
-    {
-        int num_class{ 80 };  // coco 
+    struct InitParameter {
+        int                      num_class{80};  // coco
         std::vector<std::string> class_names;
         std::vector<std::string> input_output_names;
 
-        bool dynamic_batch{ false };
+        bool   dynamic_batch{false};
         size_t batch_size;
-        int src_h, src_w; 
-        int dst_h, dst_w;
+        int    src_h, src_w;
+        int    dst_h, dst_w;
 
-        float scale{ 255.f };
-        float means[3] = { 0.f, 0.f, 0.f };
-        float stds[3] = { 1.f, 1.f, 1.f };
+        float scale{255.f};
+        float means[3] = {0.f, 0.f, 0.f};
+        float stds[3] = {1.f, 1.f, 1.f};
 
         float iou_thresh;
         float conf_thresh;
 
-        int topK{ 300 };
+        int         topK{300};
         std::string save_path;
     };
 
-
-    struct Box
-    {
-        float left, top, right, bottom, confidence;
-        int label;
+    struct Box {
+        float                    left, top, right, bottom, confidence;
+        int                      label;
         std::vector<cv::Point2i> land_marks;
 
         Box() = default;
-        Box(float left, float top, float right, float bottom, float confidence, int label) :
-            left(left), top(top), right(right), bottom(bottom), confidence(confidence), label(label) {}
+        Box(float left, float top, float right, float bottom, float confidence, int label)
+            : left(left), top(top), right(right), bottom(bottom), confidence(confidence), label(label) {}
 
-        Box(float left, float top, float right, float bottom, float confidence, int label, int numLandMarks) :
-            left(left), top(top), right(right), bottom(bottom), confidence(confidence), label(label) 
-        {
+        Box(float left, float top, float right, float bottom, float confidence, int label, int numLandMarks)
+            : left(left), top(top), right(right), bottom(bottom), confidence(confidence), label(label) {
             land_marks.reserve(numLandMarks);
         }
     };
-
 
     struct AffineMat {
         float v0, v1, v2;
@@ -112,9 +107,9 @@ namespace utils
     enum class NormType : int { None = 0, MeanStd = 1, AlphaBeta = 2 };
 
     struct Norm {
-        float mean[3];
-        float std[3];
-        float alpha, beta;
+        float    mean[3];
+        float    std[3];
+        float    alpha, beta;
         NormType type = NormType::None;
 
         // out = (x * alpha - mean) / std
@@ -125,12 +120,12 @@ namespace utils
         static Norm None();
     };
 
-    std::vector<cv::Mat> load_images(const std::string& folderPath);
+    std::vector<cv::Mat> load_images(const std::string& folder_path, int loop_num = 1);
     std::vector<uint8_t> load_model(const std::string& file);
-    int64_t timestamp_ms();
-    std::string file_name(const std::string& path, bool include_suffix);
+    int64_t              timestamp_ms();
+    std::string          file_name(const std::string& path, bool include_suffix);
 
     void save_float_image(float* d_src, int width, int height, const std::string& save_path, bool normalize = false);
-    void save_float_image_chw(float* d_src, int width, int height, const std::string& save_path, 
-                            ChannelsArrange order, bool normalize = false);
+    void save_float_image_chw(float* d_src, int width, int height, const std::string& save_path, ChannelsArrange order,
+                              bool normalize = false);
 }  // namespace utils

@@ -28,25 +28,27 @@ utils::Norm utils::Norm::None() { return Norm(); }
 /**
  * 加载指定目录下的图片
  */
-std::vector<cv::Mat> utils::load_images(const std::string& folder_path) {
+std::vector<cv::Mat> utils::load_images(const std::string& folder_path, int loop_num) {
     std::vector<cv::Mat> images;
-    for (const auto& entry : fs::directory_iterator(folder_path)) {
-        if (entry.is_regular_file()) {
-            std::string filePath = entry.path().string();
-            std::string ext = entry.path().extension().string();
-            if (ext == ".jpg" || ext == ".png" || ext == ".jpeg" || ext == ".bmp" || ext == ".tiff") {
-                cv::Mat img = cv::imread(filePath, cv::IMREAD_COLOR);
-                if (img.empty()) {
-                    std::cerr << "Failed to load image: " << filePath << std::endl;
-                    continue;
+
+    for (int i = 0; i < loop_num; ++i) {
+        for (const auto& entry : fs::directory_iterator(folder_path)) {
+            if (entry.is_regular_file()) {
+                std::string filePath = entry.path().string();
+                std::string ext = entry.path().extension().string();
+                if (ext == ".jpg" || ext == ".png" || ext == ".jpeg" || ext == ".bmp" || ext == ".tiff") {
+                    cv::Mat img = cv::imread(filePath, cv::IMREAD_COLOR);
+                    if (img.empty()) {
+                        std::cerr << "Failed to load image: " << filePath << std::endl;
+                        continue;
+                    }
+                    images.push_back(img);
                 }
-                images.push_back(img);
             }
         }
-    }
+    }  // for (loop_num)
     return images;
 }
-
 
 std::vector<uint8_t> utils::load_model(const std::string& file) {
     std::ifstream in(file, std::ios::in | std::ios::binary);

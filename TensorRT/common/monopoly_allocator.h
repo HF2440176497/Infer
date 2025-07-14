@@ -42,7 +42,7 @@ public:
         cv_.notify_all();
 
         std::unique_lock<std::mutex> lck(lock_);
-        cv_exit_.wait(lck, [&]() { return num_wait_thread_ == 0; });
+        cv_exit_.wait(lck, [&]() { return num_wait_thread_ == 0; });  // 保证能获取完再析构
     }
 
     MonopolyDataPointer query(int timeout = 10000) {
@@ -52,9 +52,8 @@ public:
         if (num_available_ == 0) {
             num_wait_thread_++;
 
-            auto state = cv_.wait_for(lck, std::chrono::milliseconds(timeout), [&]() { 
-                return num_available_ > 0 || !run_; 
-            });
+            auto state =
+                cv_.wait_for(lck, std::chrono::milliseconds(timeout), [&]() { return num_available_ > 0 || !run_; });
 
             num_wait_thread_--;
             cv_exit_.notify_one();

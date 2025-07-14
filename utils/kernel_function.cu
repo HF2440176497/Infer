@@ -112,7 +112,7 @@ void affine_project_device_kernel(utils::AffineMat* matrix, int x, int y, float*
 
 /**
  * 单张图片预处理
- * @details 适用于 NHWC 格式（通道交错）
+ * @details 适用于 HWC 格式（通道交错）得到 CHW 格式
  */
 __global__ 
 void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int dst_w, int dst_h, 

@@ -21,13 +21,16 @@ set(TENSORRT_SAMPLES_DIR ${TensorRT_ROOT}/samples)
 find_package(OpenCV REQUIRED PATHS ${OpenCV_DIR})
 find_package(CUDAToolkit REQUIRED)
 
+set(main_srcs 
+   ${PROJECT_SOURCE_DIR}/main.cpp)
+
 file(GLOB_RECURSE utils_srcs 
     ${PROJECT_SOURCE_DIR}/utils/*.cpp
     ${PROJECT_SOURCE_DIR}/utils/*.cu)
 
 file(GLOB_RECURSE yolo_srcs 
-    ${PROJECT_SOURCE_DIR}/yolov8/*.cpp
-    ${PROJECT_SOURCE_DIR}/yolov8/*.cu)
+    ${PROJECT_SOURCE_DIR}/application/*.cpp
+    ${PROJECT_SOURCE_DIR}/application/*.cu)
 
 file(GLOB_RECURSE trt_srcs
     ${PROJECT_SOURCE_DIR}/TensorRT/*.cpp
@@ -37,6 +40,7 @@ add_executable(main
     ${utils_srcs}
     ${yolo_srcs}
     ${trt_srcs}
+    ${main_srcs}
     # ${TensorRT_ROOT}/samples/common/logger.cpp 
     # ${TensorRT_ROOT}/samples/common/sampleOptions.cpp
 )
@@ -46,9 +50,10 @@ add_executable(main
 
 target_include_directories(main PRIVATE
     ${PROJECT_SOURCE_DIR}
-    ${PROJECT_SOURCE_DIR}/yolov8
+    ${PROJECT_SOURCE_DIR}/application
     ${PROJECT_SOURCE_DIR}/utils
     ${PROJECT_SOURCE_DIR}/TensorRT
+    ${PROJECT_SOURCE_DIR}/TensorRT/builder
     ${PROJECT_SOURCE_DIR}/TensorRT/common
     ${PROJECT_SOURCE_DIR}/TensorRT/infer
     ${OpenCV_INCLUDE_DIRS}

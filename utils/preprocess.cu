@@ -39,38 +39,17 @@ void AffineTrans::compute(const std::tuple<int, int> &from, const std::tuple<int
 /**
  * @brief 分配中间变量内存
  */
-PreProcess::PreProcess(utils::InitParameter params, uint8_t* src, float* dst) {
-    this->batch_size = params.batch_size;
-    this->src_w = params.src_w;
-    this->src_h = params.src_h;
-    this->dst_w = params.dst_w;
-    this->dst_h = params.dst_h;
-
-    CHECK(cudaMalloc(&m_resize_dev, batch_size * 3 * dst_h * dst_w * sizeof(float)));
-    CHECK(cudaMalloc(&m_swap_dev, batch_size * 3 * dst_h * dst_w * sizeof(float)));
-    CHECK(cudaMalloc(&m_norm_dev, batch_size * 3 * dst_h * dst_w * sizeof(float)));
-
-    m_src_dev = src;
-    m_hwc_dev = dst;
+PreProcess::PreProcess() {
+    normalize_ = utils::Norm::alpha_beta(1 / 255.0f, 0.0f);
 }
 
 
 PreProcess::~PreProcess() {
-    CHECK(cudaFree(m_resize_dev));
-    CHECK(cudaFree(m_swap_dev));
-    CHECK(cudaFree(m_norm_dev));
-}
-
-void PreProcess::init() {
-    normalize_ = utils::Norm::alpha_beta(1 / 255.0f, 0.0f);
-}
-
-/**
- * TODO: 验证预处理
- */
-void PreProcess::compute() {
-    resize_dev();
-    utils::save_float_image(m_resize_dev, dst_w, dst_h, "output.png");
+    if (owner_stream_ && stream_) {
+        CHECK(cudaStreamDestroy(stream_));
+    }
+    owner_stream_ = false;
+    stream_ = nullptr;
 }
 
 /**
@@ -78,9 +57,8 @@ void PreProcess::compute() {
  * @param net_input 保存前处理结果 用于模型输入
  * @details 拷贝输入图像到 pre_buffer
  */
-void PreProcess::compute(int ibatch, const cv::Mat& image,
-                        std::vector<std::shared_ptr<TRT::MixMemory>> pre_buffers,
-                        std::shared_ptr<TRT::Tensor> net_input) {
+void PreProcess::compute(const cv::Mat& image, std::shared_ptr<TRT::MixMemory> pre_buffer,
+                         std::shared_ptr<TRT::Tensor> net_input) {
     if (dst_h == -1 || dst_w == -1) {  // init dst scale
         dst_h = net_input->height();
         dst_w = net_input->width();
@@ -89,31 +67,27 @@ void PreProcess::compute(int ibatch, const cv::Mat& image,
     src_h = image.rows;
     size_t image_size = src_w * src_h * 3;  // bytes
 
-    std::cout << "src_w: " << src_w 
-    << "; src_h: " << src_h 
-    << "; image_size: " << image_size << std::endl;
+    // std::cout << "src_w: " << src_w 
+    // << "; src_h: " << src_h 
+    // << "; image_size: " << image_size << std::endl;
 
-    pre_buffers[ibatch]->gpu(image_size);
-    pre_buffers[ibatch]->copy_from_cpu(0, image.data, image_size);
+    pre_buffer->gpu(image_size);
+    pre_buffer->copy_from_cpu(0, image.data, image_size);
 
     std::tuple<int, int> from{src_w, src_h};
     std::tuple<int, int> to{dst_w, dst_h};
     m_trans.compute(from, to);
 
-    resize_dev(ibatch, pre_buffers[ibatch], net_input);  // out: CHW BGR
-    channel_swap_dev(ibatch, net_input, utils::ChannelsArrange::BGR);  // out: CHW RGB
-    norm_dev(ibatch, net_input, utils::ChannelsArrange::RGB);
-    
-    // TODO: 保存检查
-    auto current_offset = net_input->offset(ibatch);
-    float* cur_image_buf = net_input->gpu<float>() + current_offset;
+    resize_dev(pre_buffer, net_input);  // out: CHW BGR
+    channel_swap_dev(net_input, utils::ChannelsArrange::BGR);  // out: CHW RGB
+    norm_dev(net_input, utils::ChannelsArrange::RGB);  // out: CHW RGB
 
     int64_t timestamp = utils::timestamp_ms();
     std::string filename = std::to_string(timestamp) + ".png";
 
     CHECK(cudaStreamSynchronize(stream_));
-    utils::save_float_image_chw(cur_image_buf, dst_w, dst_h, filename,
-                                utils::ChannelsArrange::RGB, true);
+    // utils::save_float_image_chw(net_input->gpu<float>(), dst_w, dst_h, filename,
+    //                             utils::ChannelsArrange::RGB, true);
 }
 
 void PreProcess::set_stream(cudaStream_t stream, bool owner_stream) {
@@ -125,48 +99,21 @@ void PreProcess::set_stream(cudaStream_t stream, bool owner_stream) {
 }
 
 /**
- * @brief resize and padding
- */
-void PreProcess::resize_dev() {
-    dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 grid_size((dst_w * dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE, (batch_size + BLOCK_SIZE - 1) / BLOCK_SIZE);
-
-    int src_volume = 3 * src_h * src_w;
-    int src_area = src_h * src_w;
-
-    int dst_volume = 3 * dst_h * dst_w;
-    int dst_area = dst_h * dst_w;
-
-    float pad_value = 114;
-
-    m_trans.get_d2s().print("d2s");
-    m_trans.get_s2d().print("s2d");
-    
-    resize_device_kernel_batch <<< grid_size, block_size, 0, stream_>>> (
-        m_src_dev, src_w, src_h, src_area, src_volume,
-        m_resize_dev, dst_w, dst_h, dst_area, dst_volume,
-        batch_size, pad_value, m_trans.get_d2s());
-}
-
-/**
  * 单张图片进行预处理
  */
-void PreProcess::resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buffer, 
+void PreProcess::resize_dev(std::shared_ptr<TRT::MixMemory> pre_buffer, 
                             std::shared_ptr<TRT::Tensor> net_input) {
 
-    auto current_offset = net_input->offset(ibatch);
-    float* dst_dev = net_input->gpu<float>() + current_offset;
+    float* dst_dev = net_input->gpu<float>();
     uint8_t* src_dev = (uint8_t*)pre_buffer->gpu();  // MixMem 暂时是不支持类型指定的
-
-    INFO("current offset location [%lld]", current_offset);
 
     dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
     float pad_value = 114;
 
-    m_trans.get_d2s().print("d2s");
-    m_trans.get_s2d().print("s2d");
+    // m_trans.get_d2s().print("d2s");
+    // m_trans.get_s2d().print("s2d");
     
     resize_device_kernel <<< grid_size, block_size, 0, stream_>>> (
         src_dev, src_w, src_h, 
@@ -178,10 +125,9 @@ void PreProcess::resize_dev(int ibatch, std::shared_ptr<TRT::MixMemory> pre_buff
 /**
  * 交换通道
  */
-void PreProcess::channel_swap_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
+void PreProcess::channel_swap_dev(std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
 
-    auto current_offset = net_input->offset(ibatch);
-    float* dst_dev = net_input->gpu<float>() + current_offset;
+    float* dst_dev = net_input->gpu<float>();
 
     dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);
@@ -192,9 +138,8 @@ void PreProcess::channel_swap_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_i
 /**
  * 标准化 指定三通道排列
  */
-void PreProcess::norm_dev(int ibatch, std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
-    auto current_offset = net_input->offset(ibatch);
-    float* dst_dev = net_input->gpu<float>() + current_offset;
+void PreProcess::norm_dev(std::shared_ptr<TRT::Tensor> net_input, utils::ChannelsArrange order) {
+    float* dst_dev = net_input->gpu<float>();
 
     dim3 block_size(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid_size((dst_w + BLOCK_SIZE - 1) / BLOCK_SIZE, (dst_h + BLOCK_SIZE - 1) / BLOCK_SIZE);

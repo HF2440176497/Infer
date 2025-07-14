@@ -128,7 +128,7 @@ namespace TRT {
             INFO("Copyed bytes[%lld] > remain bytes[%lld], out of range", copyed_bytes, remain_bytes);
             return *this;
         }
-        CHECK(cudaMemcpyAsync(gpu_ + offset, src, copyed_bytes, cudaMemcpyHostToDevice, stream));
+        CHECK(cudaMemcpyAsync((uint8_t*)gpu_ + offset, src, copyed_bytes, cudaMemcpyHostToDevice, stream));
         return *this;
     }
 
@@ -288,6 +288,7 @@ namespace TRT {
             default:
                 INFO("Unsupported tensor format");
         }
+        return -1;
     }
 
     int Tensor::height() const {
@@ -302,6 +303,7 @@ namespace TRT {
             default:
                 INFO("Unsupported tensor format");
         }
+        return -1;
     }
 
     int Tensor::width() const {
@@ -316,6 +318,7 @@ namespace TRT {
             default:
                 INFO("Unsupported tensor format");
         }
+        return -1;
     }
 
     const char* Tensor::descriptor() const{
@@ -384,7 +387,7 @@ namespace TRT {
         if (head_ == DataHead::Init) return new_tensor;
 
         if (head_ == DataHead::Host) {
-            memcpy(new_tensor->cpu(), this->cpu(), this->bytes_);
+            memcpy((uint8_t*)new_tensor->cpu(), this->cpu(), this->bytes_);
         } else if (head_ == DataHead::Device) {
             CHECK(
                 cudaMemcpyAsync(new_tensor->gpu(), this->gpu(), bytes_, cudaMemcpyDeviceToDevice, stream_));
@@ -446,10 +449,10 @@ namespace TRT {
             return *this;
         }
         if (head_ == DataHead::Device) {
-            CHECK(cudaMemcpyAsync(data_->gpu() + offset_location, src, copyed_bytes,
+            CHECK(cudaMemcpyAsync((uint8_t*)data_->gpu() + offset_location, src, copyed_bytes,
                                              cudaMemcpyHostToDevice, stream_));
         } else if (head_ == DataHead::Host) {
-            memcpy(data_->cpu() + offset_location, src, copyed_bytes);
+            memcpy((uint8_t*)data_->cpu() + offset_location, src, copyed_bytes);
         } else {
             INFO("Unsupport head type %d", head_);
         }
