@@ -65,6 +65,7 @@ public:
     virtual void                    synchronize() = 0;
     virtual size_t                  get_device_memory_size() = 0;
 
+    virtual bool validate_batch_size(int actual_size) = 0;
     virtual void print() = 0;
     virtual int  device() = 0;
 };  // class Infer

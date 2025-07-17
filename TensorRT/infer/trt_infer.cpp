@@ -97,7 +97,6 @@ public:
     virtual bool load(const std::string& file);
     virtual bool load_from_memory(const void* pdata, size_t size);
     virtual std::shared_ptr<std::vector<uint8_t>> serial_engine();
-    virtual bool validate_batch_size(int actual_size);
 
 private:
     void build_engine_input_and_outputs_map();
@@ -130,6 +129,7 @@ public:
     virtual void                    print() override;
     virtual int                     device() override;
     virtual size_t                  get_device_memory_size() override;
+    virtual bool 		validate_batch_size(int actual_size) override;
 };
 
 InferImpl::~InferImpl() {
@@ -243,23 +243,33 @@ void InferImpl::build_engine_input_and_outputs_map() {
         auto format = context_->engine_->getTensorFormat(bind_name);
 
         auto new_tensor = std::make_shared<TRT::Tensor>(dims, data_type, format);
-        new_tensor->set_stream(this->context_->stream_);
+        new_tensor->set_stream(this->context_->stream_);  // 起始时设置为相同的 stream
 
         if (bind_name == inputs_name_) {
             inputs_ = new_tensor;
-        } else {
+        } else if (bind_name == outputs_name_) {
             outputs_ = new_tensor;
+        } else {
+            INFO("unable to recognize bind_name: %s", bind_name);
         }
         bind_ordered_tensor_.push_back(new_tensor);
     }
 }
 
-
 void InferImpl::forward(bool sync) {
+    int actual_batch_size = inputs_->batch();  // batch_size (after validate)
+    outputs_->resize_single_dim(0, actual_batch_size);  // 动态类型下，输出维度需要设置
+    outputs_->to_gpu(false);
 
+    context_->context_->setInputTensorAddress(inputs_name_.c_str(), inputs_->gpu());
+    context_->context_->setOutputTensorAddress(outputs_name_.c_str(), outputs_->gpu());
 
+    bool execute_result = context_->context_->enqueueV3(context_->stream_);
 
-
+    if (!execute_result) {
+        auto code = cudaGetLastError();
+        INFO("execute fail, code %d[%s], message %s", code, cudaGetErrorName(code), cudaGetErrorString(code));
+    }
     if (sync) {
         synchronize();
     }
@@ -343,17 +353,7 @@ int InferImpl::get_max_batch_size() {
  * 验证传入的实际 batch_size 是否符合模型要求
  */
 bool InferImpl::validate_batch_size(int actual_size) {
-    int suitable_size = get_max_batch_size();
-    if (has_static_input_batch_) {
-        if (suitable_size != actual_size) {
-            return false;
-        }
-    } else {
-        if (actual_size > suitable_size) {
-            return false;
-        }
-    }
-    return true;
+    return inputs_shape_.validate_batchsize(actual_size);
 }
 
 

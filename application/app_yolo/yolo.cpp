@@ -4,9 +4,9 @@
 #include "infer/trt_infer.h"
 #include "common/InferController.h"
 #include "common/trt_tensor.h"
-#include "utils/preprocess.cuh"
+#include "utils/processor.cuh"
 #include "common/detect.hpp"
-
+#include "utils/kernel_function.h"
 
 namespace Yolo {
 
@@ -40,12 +40,13 @@ public:
     virtual std::vector<std::shared_future<ObjDetect::BoxArray>> commits(const std::vector<cv::Mat>& images) override;
 
 public:
+    virtual void adjust_mem() override;
     virtual bool preprocess(Job& job, const cv::Mat& image) override;
     virtual void worker(std::promise<bool>& result) override;
     virtual bool worker_serial() override;
+    virtual void inference_handle() override;
 
 public:
-    virtual void adjust_mem();
     virtual bool startup(const std::string& file, int device_id, float confidence_threshold, float nms_threshold,
                          int max_objects, bool use_multi_preprocess_stream);
 
@@ -54,12 +55,23 @@ private:
     int                             input_height_ = 0;
     float                           confidence_threshold_ = 0;
     float                           nms_threshold_ = 0;
-    int                             max_objects_ = 1024;
+    int                             max_objects_ = 512;
     cudaStream_t                    stream_ = nullptr;
     bool                            use_multi_preprocess_stream_ = false;
-    std::shared_ptr<PreProcess>     pre_ = nullptr;
-    std::shared_ptr<TRT::MixMemory> pre_buffer_ = nullptr;
+    std::shared_ptr<Processor>      proc_ = nullptr;
+
+    std::shared_ptr<TRT::Tensor>    pre_buffer_ = nullptr;
+    std::shared_ptr<TRT::Tensor>    output_array_device_ = nullptr;  // 后处理输出
+                                                                     // dim: (infer_batch_size, 1 + max_objects_ * NUM_BOX_ELEMENT)
+
+    std::shared_ptr<TRT::Infer>     engine_ = nullptr;
 };  // class InferImpl
+
+
+void InferImpl::adjust_mem() {
+    pre_buffer_ = std::make_shared<TRT::Tensor>(nvinfer1::DataType::kUINT8);  // cv::Mat uint8_t
+    output_array_device_ = std::make_shared<TRT::Tensor>();
+}
 
 /**
  * Override Controller::preprocess
@@ -73,8 +85,8 @@ bool InferImpl::preprocess(Job& job, const cv::Mat& image) {
         INFO("tensor_allocator_ is nullptr");
         return false;
     }
-    if (pre_ == nullptr) {
-        INFO("pre_ is null");
+    if (proc_ == nullptr) {
+        INFO("proc_ is null");
         return false;
     }
     job.mono_tensor = tensor_allocator_->query();  // std::shared_ptr<MonopolyData>
@@ -88,15 +100,15 @@ bool InferImpl::preprocess(Job& job, const cv::Mat& image) {
         tensor = std::make_shared<TRT::Tensor>();
         if (use_multi_preprocess_stream_) {
             CHECK(cudaStreamCreate(&preprocess_stream));
-            pre_->set_stream(preprocess_stream, true);
+            proc_->set_stream(preprocess_stream, true);
         } else {
             preprocess_stream = stream_;
-            pre_->set_stream(preprocess_stream, false);
+            proc_->set_stream(preprocess_stream, false);
         }
     }
     tensor->set_stream(preprocess_stream);
-    tensor->resize(1, 3, input_height_, input_width_);  // tensor 用于保存预处理的结果
-    pre_->compute(image, pre_buffer_, tensor);
+    tensor->resize(1, 3, input_height_, input_width_);  // 用于保存预处理的结果, 应当是 NCHW 排列
+    proc_->pre_compute(image, pre_buffer_, tensor);
     return true;
 }
 
@@ -111,7 +123,8 @@ void InferImpl::worker(std::promise<bool>& result) {
 }
 
 /**
- * TODO: 串行初始化模型 
+ * TODO: 串行初始化模型
+ * 在 start
  */
 bool InferImpl::worker_serial() {
     auto file = start_param_.model_file();
@@ -123,23 +136,86 @@ bool InferImpl::worker_serial() {
         INFO("Engine load failed");
         return false;
     }
-    stream_ = engine->get_stream();  // 推理所用的 stream
 
-    std::shared_ptr<TRT::Tensor> input = engine->get_input();
-    std::shared_ptr<TRT::Tensor> output = engine->get_output();
+    // TODO: for serial processes, save as member variable
+    if (engine_ == nullptr) {
+        engine_ = engine;
+    }
+    stream_ = engine->get_stream();  // the stream used to infer
+
+    auto input = engine->get_input();
     input_width_ = input->width();
     input_height_ = input->height();
     this->adjust_mem();
 
     int max_batch_size = engine->get_max_batch_size();  // ps: input dims[0] already max_batch_size 
     tensor_allocator_ = std::make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size * 2);
-    pre_ = std::make_shared<PreProcess>();
+    proc_ = std::make_shared<Processor>();
     engine->print();
     return true;
 }
 
-void InferImpl::adjust_mem() {
-    this->pre_buffer_ = std::make_shared<TRT::MixMemory>();
+
+void InferImpl::inference_handle() {
+
+    int max_batch_size = engine_->get_max_batch_size();
+
+    // TODO: 串行流程下，一次全部取出，因此使用循环进行实验
+    int loop_num = jobs_.size() / max_batch_size;
+    INFO("inference_handle loop_num: %d", loop_num);
+
+    for (int i = 0; i < loop_num; ++i) {
+        std::vector<Job> fetch_jobs{};
+        for(int i = 0; i < max_batch_size && !jobs_.empty(); ++i){
+            fetch_jobs.emplace_back(std::move(jobs_.front()));
+            jobs_.pop();
+        }
+        int infer_batch_size = fetch_jobs.size();  // actual_batch
+        INFO("max_batch_size: %d; infer_batch_size: %d", max_batch_size, infer_batch_size);
+
+        if (!engine_->validate_batch_size(infer_batch_size)) {
+            INFO("ERROR: actual batch size not valid");
+            return;
+        }
+        auto input = engine_->get_input();
+        input->resize_single_dim(0, infer_batch_size);
+
+        if (output_array_device_ == nullptr) {
+            INFO("ERROR: output_array_device_ not allocate");
+            return;
+        }
+        output_array_device_->resize(infer_batch_size, 1 + max_objects_ * NUM_BOX_ELEMENT);
+        output_array_device_->to_gpu(false);
+
+        for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
+            auto& job = fetch_jobs[ibatch];
+            auto& mono = job.mono_tensor->data();
+
+            // make sure preprocess sync
+            if (proc_->get_stream() != stream_) {
+                CHECK(cudaStreamSynchronize(proc_->get_stream()));
+            }
+            if (mono->get_stream() != proc_->get_stream()) {
+                CHECK(cudaStreamSynchronize(mono->get_stream()));
+            }
+            input->copy_from_gpu(input->offset(ibatch), mono->gpu(), mono->count());  // mono already in device (preprocess)
+            job.mono_tensor->release();
+        }
+        engine_->forward(true);
+
+        auto output = engine_->get_output();
+        int num_bboxes = output->size(2);
+        int num_classes = output->size(1) - 4;
+
+        INFO("inference_handle num_bboxes: %d; num_classes: %d", num_bboxes, num_classes);
+        
+        for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
+            proc_->post_compute(ibatch, output, output_array_device_, num_bboxes, num_classes, output->size(1), 
+                                confidence_threshold_, max_objects_);
+        }
+        output_array_device_->to_cpu(true);
+    }
+
 }
 
 // TODO: 参数未来分离为单独模块
@@ -151,6 +227,7 @@ bool InferImpl::startup(const std::string& file, int device_id, float confidence
     use_multi_preprocess_stream_ = use_multi_preprocess_stream;
     return ControllerImpl::startup(StartParamType{file, device_id});
 }
+
 
 std::shared_ptr<Infer> create_infer(const std::string& engine_file, int device_id, float confidence_threshold,
                                     float nms_threshold, int max_objects, bool use_multi_preprocess_stream) {

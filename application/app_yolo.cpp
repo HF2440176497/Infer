@@ -16,7 +16,7 @@ static void inference_and_performance(int device_id, std::string model_file) {
         device_id,                  // gpu id
         0.25f,                      // confidence threshold
         0.45f,                      // nms threshold
-        1024,                       // max objects
+        512,                        // max objects
         false                       // preprocess use multi stream
     );
     if (engine == nullptr) {
@@ -27,7 +27,7 @@ static void inference_and_performance(int device_id, std::string model_file) {
     std::vector<cv::Mat> images = utils::load_images("../data/images", 2);
     std::vector<std::shared_future<ObjDetect::BoxArray>> boxes_array{};
 
-    const int ntest = 10000;
+    const int ntest = 1;
     auto begin_time = utils::timestamp_ms();
 
     for (int i = 0; i < ntest; ++i) {
@@ -44,8 +44,6 @@ static void inference_and_performance(int device_id, std::string model_file) {
         auto& image = images[i];
         auto boxes  = boxes_array[i].get();
     }
-
-    // TODO: 只验证预处理时，Output 暂不需要
 
 }
 

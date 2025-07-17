@@ -104,7 +104,7 @@ void resize_device_kernel_batch(uint8_t* src, int src_w, int src_h, int src_area
 }
 
 __device__ 
-void affine_project_device_kernel(utils::AffineMat* matrix, int x, int y, float* proj_x, float* proj_y) {
+void affine_project_device_kernel(utils::AffineMat* matrix, float x, float y, float* proj_x, float* proj_y) {
 	*proj_x = matrix->v0 * x + matrix->v1 * y + matrix->v2;
 	*proj_y = matrix->v3 * x + matrix->v4 * y + matrix->v5;
 }
@@ -276,4 +276,103 @@ void normalize_kernel_chw(float* src, int width, int height, utils::Norm norm, u
     *dst_r = r;
     *dst_g = g;
     *dst_b = b;
+}
+
+
+/**
+ * 
+ * for yolo v8, output_cdim = 84
+ */
+__global__ 
+void decode_kernel(float* predict, float* parray, int num_bboxes, int num_classes, int output_cdim,
+				float confidence_threshold, int MAX_IMAGE_BOXES, utils::AffineMat invert_affine_matrix) {
+    int position = blockDim.x * blockIdx.x + threadIdx.x;
+    if (position >= num_bboxes) return;
+
+    // 每个线程负责对应 8400 中的一个框
+    float* pitem = predict + output_cdim * position;  // 84 * position
+    float* class_confidence = pitem + 4;
+    float  confidence = *class_confidence++;
+    int    label = 0;
+
+    for (int i = 1; i < num_classes; ++i, ++class_confidence) {
+        if (*class_confidence > confidence) {
+            confidence = *class_confidence;
+            label = i;
+        }
+    }
+    if (confidence < confidence_threshold) return;
+
+    // 表示当前线程输出结果位置的偏移；只有满足 threshold 时才会增加 index
+	// index 初始值 == 0
+    int index = (int)atomicAdd(parray, 1);
+    if (index >= MAX_IMAGE_BOXES) return;
+
+    // 84 前 4 个元素
+    float cx = *pitem++;
+    float cy = *pitem++;
+    float width = *pitem++;
+    float height = *pitem++;
+    float left = cx - width * 0.5f;
+    float top = cy - height * 0.5f;
+    float right = cx + width * 0.5f;
+    float bottom = cy + height * 0.5f;
+
+	affine_project_device_kernel(&invert_affine_matrix, left, top, &left, &top);
+	affine_project_device_kernel(&invert_affine_matrix, right, bottom, &right, &bottom);
+
+	// parray + 1 是因为首部存放 index 本身
+	// index 为数目，index - 1 作为索引
+    float* pout_item = parray + 1 + (index - 1) * NUM_BOX_ELEMENT;  // 当前 index 对应的起始地址
+    *pout_item++ = left;
+    *pout_item++ = top;
+    *pout_item++ = right;
+    *pout_item++ = bottom;
+    *pout_item++ = confidence;
+    *pout_item++ = label;
+    *pout_item++ = 1;  // 1 = keep, 0 = ignore
+    *pout_item++ = position;
+}
+
+static __device__ float box_iou(float aleft, float atop, float aright, float abottom, float bleft, float btop,
+                                float bright, float bbottom) {
+    float cleft = max(aleft, bleft);
+    float ctop = max(atop, btop);
+    float cright = min(aright, bright);
+    float cbottom = min(abottom, bbottom);
+
+    float c_area = max(cright - cleft, 0.0f) * max(cbottom - ctop, 0.0f);
+    if (c_area == 0.0f) return 0.0f;
+
+    float a_area = max(0.0f, aright - aleft) * max(0.0f, abottom - atop);
+    float b_area = max(0.0f, bright - bleft) * max(0.0f, bbottom - btop);
+    return c_area / (a_area + b_area - c_area);
+}
+
+__global__ 
+void fast_nms_kernel(float* bboxes, int MAX_IMAGE_BOXES, float threshold) {
+    int position = (blockDim.x * blockIdx.x + threadIdx.x);
+    int count = min((int)*bboxes, MAX_IMAGE_BOXES);  // 有效框数量
+    if (position >= count) return;
+
+    // left, top, right, bottom, confidence, class, keepflag
+    float* pcurrent = bboxes + 1 + position * NUM_BOX_ELEMENT;
+
+    for (int i = 0; i < count; ++i) {
+        float* pitem = bboxes + 1 + i * NUM_BOX_ELEMENT;
+        if (i == position || pcurrent[5] != pitem[5]) continue;
+
+        // 索引是唯一的，pitem 表示其他框
+        if (pitem[4] >= pcurrent[4]) {
+            if (pitem[4] == pcurrent[4] && i < position) continue;
+
+            float iou =
+                box_iou(pcurrent[0], pcurrent[1], pcurrent[2], pcurrent[3], pitem[0], pitem[1], pitem[2], pitem[3]);
+
+            if (iou > threshold) {
+                pcurrent[6] = 0;  // 1=keep, 0=ignore
+                return;
+            }
+        }
+    }
 }

@@ -117,21 +117,6 @@ namespace TRT {
         CHECK(cudaGetDevice(&device_id_));
     }
 
-    MixMemory& MixMemory::copy_from_cpu(size_t offset, const void* src, 
-                                        size_t copyed_bytes, cudaStream_t stream) {
-        if (offset >= gpu_size_) {
-            INFO("Offset location[%lld] >= gpu_size_[%lld], out of range", offset, gpu_size_);
-            return *this;
-        }
-        size_t remain_bytes = gpu_size_ - offset;
-        if (copyed_bytes > remain_bytes) {
-            INFO("Copyed bytes[%lld] > remain bytes[%lld], out of range", copyed_bytes, remain_bytes);
-            return *this;
-        }
-        CHECK(cudaMemcpyAsync((uint8_t*)gpu_ + offset, src, copyed_bytes, cudaMemcpyHostToDevice, stream));
-        return *this;
-    }
-
     MixMemory::~MixMemory() {
         release_all();
     }
@@ -194,7 +179,7 @@ namespace TRT {
         }
     }
 
-    Tensor::Tensor(nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id){
+    Tensor::Tensor(nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
 		shape_string_[0] = 0;
 		descriptor_string_[0] = 0;
 		this->device_id_ = get_device(device_id);
@@ -234,37 +219,15 @@ namespace TRT {
 		this->device_id_ = get_device(device_id);
 		descriptor_string_[0] = 0;
 		setup_data(data);
-        std::vector<int> dims_vec {};
-        if (format == nvinfer1::TensorFormat::kLINEAR) {
-            dims_vec.push_back(dims.d[0]);
-            dims_vec.push_back(dims.d[1]);
-            dims_vec.push_back(dims.d[2]);
-            dims_vec.push_back(dims.d[3]);
-        } else if (format == nvinfer1::TensorFormat::kCHW2) {
-            dims_vec.push_back(dims.d[0]);
-            dims_vec.push_back(div_up(dims.d[1], 2));
-            dims_vec.push_back(dims.d[2]);
-            dims_vec.push_back(dims.d[3]);
-            dims_vec.push_back(2);
-        } else if (format == nvinfer1::TensorFormat::kCHW4) {
-            dims_vec.push_back(dims.d[0]);
-            dims_vec.push_back(div_up(dims.d[1], 4));
-            dims_vec.push_back(dims.d[2]);
-            dims_vec.push_back(dims.d[3]);
-            dims_vec.push_back(4);
-        } else if (format == nvinfer1::TensorFormat::kCHW32) {
-            dims_vec.push_back(dims.d[0]);
-            dims_vec.push_back(div_up(dims.d[1], 32));
-            dims_vec.push_back(dims.d[2]);
-            dims_vec.push_back(dims.d[3]);
-            dims_vec.push_back(32);
-        } else if (format == nvinfer1::TensorFormat::kHWC8) {
-            dims_vec.push_back(dims.d[0]);
-            dims_vec.push_back(dims.d[2]);
-            dims_vec.push_back(dims.d[3]);
-            dims_vec.push_back(div_up(dims.d[1], 8) * 8);
+        if (format != nvinfer1::TensorFormat::kLINEAR) {
+            std::cerr << "Not supported format" << std::endl;
+            return;
         }
-        resize(dims_vec);
+        std::vector<int> dims_vec;
+        for (int i = 0; i < dims.nbDims; ++i) {
+            dims_vec.push_back(dims.d[i]);
+        }
+	resize(dims_vec);
     }
 
 	Tensor::~Tensor() {
