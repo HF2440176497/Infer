@@ -219,6 +219,7 @@ void InferImpl::build_engine_input_and_outputs_map() {
     }
     // analysis model input shape
     auto dims = context_->engine_->getTensorShape(inputs_name_.c_str());
+    INFO("--------------------------------- dims: %d, %d, %d, %d", dims.d[0], dims.d[1], dims.d[2], dims.d[3]);
     if (dims.d[0] == -1) {
         nvinfer1::Dims min_dims =
             context_->engine_->getProfileShape(inputs_name_.c_str(), opt_profie_index, nvinfer1::OptProfileSelector::kMIN);
@@ -258,6 +259,11 @@ void InferImpl::build_engine_input_and_outputs_map() {
 
 void InferImpl::forward(bool sync) {
     int actual_batch_size = inputs_->batch();  // batch_size (after validate)
+    
+    auto dims = context_->engine_->getTensorShape(inputs_name_.c_str()); 
+    dims.d[0] = actual_batch_size;
+    context_->context_->setInputShape(inputs_name_.c_str(), dims);
+    
     outputs_->resize_single_dim(0, actual_batch_size);  // 动态类型下，输出维度需要设置
     outputs_->to_gpu(false);
 

@@ -120,6 +120,23 @@ namespace utils
         static Norm None();
     };
 
+    class AffineTrans {
+    public:
+        AffineTrans();
+        virtual ~AffineTrans();
+
+    public:
+        void compute(const std::tuple<int, int>& from, const std::tuple<int, int>& to);  // 相当于初始化
+
+        utils::AffineMat get_d2s() { return m_d2s; }
+        utils::AffineMat get_s2d() { return m_s2d; }
+
+    public:
+        utils::AffineMat m_d2s;
+        utils::AffineMat m_s2d;
+    };
+
+
     std::vector<cv::Mat> load_images(const std::string& folder_path, int loop_num = 1);
     std::vector<uint8_t> load_model(const std::string& file);
     int64_t              timestamp_ms();
@@ -127,5 +144,7 @@ namespace utils
 
     void save_float_image(float* d_src, int width, int height, const std::string& save_path, bool normalize = false);
     void save_float_image_chw(float* d_src, int width, int height, const std::string& save_path, ChannelsArrange order,
+                              bool normalize = false);
+    void save_float_image_chw_cpu(float* src, int width, int height, const std::string& save_path, ChannelsArrange order,
                               bool normalize = false);
 }  // namespace utils

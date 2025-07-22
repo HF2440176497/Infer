@@ -59,8 +59,6 @@ private:
     cudaStream_t                    stream_ = nullptr;
     bool                            use_multi_preprocess_stream_ = false;
     std::shared_ptr<Processor>      proc_ = nullptr;
-
-    std::shared_ptr<TRT::Tensor>    pre_buffer_ = nullptr;
     std::shared_ptr<TRT::Tensor>    output_array_device_ = nullptr;  // 后处理输出
                                                                      // dim: (infer_batch_size, 1 + max_objects_ * NUM_BOX_ELEMENT)
 
@@ -69,8 +67,8 @@ private:
 
 
 void InferImpl::adjust_mem() {
-    pre_buffer_ = std::make_shared<TRT::Tensor>(nvinfer1::DataType::kUINT8);  // cv::Mat uint8_t
-    output_array_device_ = std::make_shared<TRT::Tensor>();
+    auto ouput_dtype = engine_->get_output()->type();
+    output_array_device_ = std::make_shared<TRT::Tensor>(ouput_dtype);
 }
 
 /**
@@ -89,6 +87,8 @@ bool InferImpl::preprocess(Job& job, const cv::Mat& image) {
         INFO("proc_ is null");
         return false;
     }
+    job.input = image;
+    job.trans = std::make_shared<utils::AffineTrans>();
     job.mono_tensor = tensor_allocator_->query();  // std::shared_ptr<MonopolyData>
     if (job.mono_tensor == nullptr) {
         INFO("Tensor allocator query failed.");
@@ -108,9 +108,13 @@ bool InferImpl::preprocess(Job& job, const cv::Mat& image) {
     }
     tensor->set_stream(preprocess_stream);
     tensor->resize(1, 3, input_height_, input_width_);  // 用于保存预处理的结果, 应当是 NCHW 排列
-    proc_->pre_compute(image, pre_buffer_, tensor);
+    
+    proc_->pre_compute(job.input, tensor, job.trans);
     return true;
 }
+
+
+
 
 std::vector<std::shared_future<ObjDetect::BoxArray>> InferImpl::commits(const std::vector<cv::Mat>& images) {
     // return ControllerImpl::commits(images);
@@ -160,7 +164,8 @@ void InferImpl::inference_handle() {
 
     int max_batch_size = engine_->get_max_batch_size();
 
-    // TODO: 串行流程下，一次全部取出，因此使用循环进行实验
+    // TODO: 串行流程下，一次全部取出
+    // 因此我们每次固定取出 max_batch_size
     int loop_num = jobs_.size() / max_batch_size;
     INFO("inference_handle loop_num: %d", loop_num);
 
@@ -198,23 +203,59 @@ void InferImpl::inference_handle() {
             if (mono->get_stream() != proc_->get_stream()) {
                 CHECK(cudaStreamSynchronize(mono->get_stream()));
             }
-            input->copy_from_gpu(input->offset(ibatch), mono->gpu(), mono->count());  // mono already in device (preprocess)
+            input->copy_from_gpu(input->offset(ibatch), mono->gpu(), mono->count());  // mono already in device: preprocess
             job.mono_tensor->release();
         }
         engine_->forward(true);
 
         auto output = engine_->get_output();
         int num_bboxes = output->size(2);
-        int num_classes = output->size(1) - 4;
+        int output_cdim = output->size(1);
+        int num_classes = output_cdim - 4;
 
         INFO("inference_handle num_bboxes: %d; num_classes: %d", num_bboxes, num_classes);
-        
-        for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
-            proc_->post_compute(ibatch, output, output_array_device_, num_bboxes, num_classes, output->size(1), 
-                                confidence_threshold_, max_objects_);
+
+        for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
+            auto& job = fetch_jobs[ibatch];
+            proc_->post_compute(ibatch, output, output_array_device_, num_bboxes, num_classes, output_cdim,
+                                confidence_threshold_, max_objects_, job.trans);
+            proc_->nms_decode(ibatch, output_array_device_, nms_threshold_, max_objects_);
+
+            // float* image_based_output = output->cpu<float>(ibatch);  // offset = ibatch
+            // float* output_array_ptr = output_array_device_->cpu<float>(ibatch);
+            // proc_->decode_cpu(image_based_output, output_array_ptr, num_bboxes, num_classes, output->size(1),
+            //                   confidence_threshold_, max_objects_, job.trans);
         }
-        output_array_device_->to_cpu(true);
-    }
+
+        // for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
+        //     float* output_array_ptr = output_array_device_->cpu<float>(ibatch);
+        //     int num_out = static_cast<int>(output_array_ptr[0]);
+        //     auto& job     = fetch_jobs[ibatch];  // from jobs_
+        //     auto& image_based_boxes   = job.output;
+        //     for (int i = 0; i < num_out; ++i) {
+        //         const float* pbox = &output_array_ptr[1 + i * NUM_BOX_ELEMENT];
+        //         image_based_boxes.emplace_back(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5]);
+        //     }
+        //     job.pro->set_value(image_based_boxes);
+        // }
+        output_array_device_->to_cpu(true);  // copy to cpu
+        for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
+            float* parray = output_array_device_->cpu<float>(ibatch);
+            int    count = std::min(max_objects_, static_cast<int>(parray[0]));
+            auto&  job = fetch_jobs[ibatch];  // from jobs_
+            auto&  image_based_boxes = job.output;
+            for (int i = 0; i < count; ++i) {
+                float* pbox  = parray + 1 + i * NUM_BOX_ELEMENT;
+                int label    = pbox[5];
+                int keepflag = pbox[6];
+                if (keepflag == 1) {
+                    image_based_boxes.emplace_back(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label);
+                }
+            }
+            job.pro->set_value(image_based_boxes);
+        }
+
+    }  // for (int i = 0; i < loop_num; ++i)
 
 }
 

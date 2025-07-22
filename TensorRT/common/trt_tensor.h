@@ -152,7 +152,7 @@ namespace TRT {
         template<typename DType, typename ... _Args> 
         inline DType& at(int i, _Args&& ... args) { return *(cpu<DType>() + offset(i, args...)); }
         
-        std::shared_ptr<MixMemory> get_data()             const {return data_;}
+        // std::shared_ptr<MixMemory> get_data()             const {return data_;}
 
         bool         is_stream_owner() const { return stream_owner_; }
         cudaStream_t get_stream() const { return stream_; }

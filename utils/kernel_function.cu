@@ -48,7 +48,7 @@ void resize_device_kernel_batch(uint8_t* src, int src_w, int src_h, int src_area
 		float src_x = 0;
 		float src_y = 0;
 
-		affine_project_device_kernel(&matrix, dst_x, dst_y, &src_x, &src_y);
+		affine_project_device_kernel(matrix, dst_x, dst_y, &src_x, &src_y);
 
 		float c0 = padding_value, c1 = padding_value, c2 = padding_value;
 		if (src_x < -1 || src_x >= src_w || src_y < -1 || src_y >= src_h) {
@@ -104,9 +104,9 @@ void resize_device_kernel_batch(uint8_t* src, int src_w, int src_h, int src_area
 }
 
 __device__ 
-void affine_project_device_kernel(utils::AffineMat* matrix, float x, float y, float* proj_x, float* proj_y) {
-	*proj_x = matrix->v0 * x + matrix->v1 * y + matrix->v2;
-	*proj_y = matrix->v3 * x + matrix->v4 * y + matrix->v5;
+void affine_project_device_kernel(utils::AffineMat matrix, float x, float y, float* proj_x, float* proj_y) {
+	*proj_x = matrix.v0 * x + matrix.v1 * y + matrix.v2;
+	*proj_y = matrix.v3 * x + matrix.v4 * y + matrix.v5;
 }
 
 
@@ -130,7 +130,7 @@ void resize_device_kernel(uint8_t* src, int src_w, int src_h, float* dst, int ds
 	float src_x = 0;
 	float src_y = 0;
 
-	affine_project_device_kernel(&matrix, dst_x, dst_y, &src_x, &src_y);
+	affine_project_device_kernel(matrix, dst_x, dst_y, &src_x, &src_y);
 
 	float c0 = pad_value, c1 = pad_value, c2 = pad_value;
 	if (src_x < -1 || src_x >= src_w || src_y < -1 || src_y >= src_h) {
@@ -280,7 +280,6 @@ void normalize_kernel_chw(float* src, int width, int height, utils::Norm norm, u
 
 
 /**
- * 
  * for yolo v8, output_cdim = 84
  */
 __global__ 
@@ -289,49 +288,46 @@ void decode_kernel(float* predict, float* parray, int num_bboxes, int num_classe
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= num_bboxes) return;
 
-    // 每个线程负责对应 8400 中的一个框
-    float* pitem = predict + output_cdim * position;  // 84 * position
-    float* class_confidence = pitem + 4;
-    float  confidence = *class_confidence++;
-    int    label = 0;
+	const int stride = num_bboxes; // 每个属性之间的步长 (8400)
 
-    for (int i = 1; i < num_classes; ++i, ++class_confidence) {
-        if (*class_confidence > confidence) {
-            confidence = *class_confidence;
+	float cx = predict[0 * stride + position];     // 属性0 位置起始
+    float cy = predict[1 * stride + position];     // 属性1
+    float width = predict[2 * stride + position];  // 属性2
+    float height = predict[3 * stride + position]; // 属性3
+
+    const float* class_scores = predict + 4 * stride;
+    float confidence = class_scores[position];  // 第0类的分数
+    int label = 0;
+    
+    for (int i = 1; i < num_classes; ++i) {
+        float score = class_scores[i * stride + position];  // 偏移 position 才是当前框的
+        if (score > confidence) {
+            confidence = score;
             label = i;
         }
     }
     if (confidence < confidence_threshold) return;
 
-    // 表示当前线程输出结果位置的偏移；只有满足 threshold 时才会增加 index
-	// index 初始值 == 0
     int index = (int)atomicAdd(parray, 1);
     if (index >= MAX_IMAGE_BOXES) return;
 
-    // 84 前 4 个元素
-    float cx = *pitem++;
-    float cy = *pitem++;
-    float width = *pitem++;
-    float height = *pitem++;
-    float left = cx - width * 0.5f;
+	float left = cx - width * 0.5f;
     float top = cy - height * 0.5f;
     float right = cx + width * 0.5f;
     float bottom = cy + height * 0.5f;
 
-	affine_project_device_kernel(&invert_affine_matrix, left, top, &left, &top);
-	affine_project_device_kernel(&invert_affine_matrix, right, bottom, &right, &bottom);
+	affine_project_device_kernel(invert_affine_matrix, left, top, &left, &top);
+	affine_project_device_kernel(invert_affine_matrix, right, bottom, &right, &bottom);
 
-	// parray + 1 是因为首部存放 index 本身
-	// index 为数目，index - 1 作为索引
-    float* pout_item = parray + 1 + (index - 1) * NUM_BOX_ELEMENT;  // 当前 index 对应的起始地址
-    *pout_item++ = left;
-    *pout_item++ = top;
-    *pout_item++ = right;
-    *pout_item++ = bottom;
-    *pout_item++ = confidence;
-    *pout_item++ = label;
-    *pout_item++ = 1;  // 1 = keep, 0 = ignore
-    *pout_item++ = position;
+    float* pout_item = parray + 1 + index * NUM_BOX_ELEMENT;
+    pout_item[0] = left;
+    pout_item[1] = top;
+    pout_item[2] = right;
+    pout_item[3] = bottom;
+    pout_item[4] = confidence;
+    pout_item[5] = static_cast<float>(label);
+    pout_item[6] = 1.0f;      // keep
+    pout_item[7] = static_cast<float>(position); // pos
 }
 
 static __device__ float box_iou(float aleft, float atop, float aright, float abottom, float bleft, float btop,
@@ -356,11 +352,12 @@ void fast_nms_kernel(float* bboxes, int MAX_IMAGE_BOXES, float threshold) {
     if (position >= count) return;
 
     // left, top, right, bottom, confidence, class, keepflag
-    float* pcurrent = bboxes + 1 + position * NUM_BOX_ELEMENT;
+    float* pcurrent = bboxes + 1 + position * NUM_BOX_ELEMENT;  // +1: skip index
 
     for (int i = 0; i < count; ++i) {
         float* pitem = bboxes + 1 + i * NUM_BOX_ELEMENT;
-        if (i == position || pcurrent[5] != pitem[5]) continue;
+        if (i == position || pcurrent[5] != pitem[5])  // same class
+			continue;
 
         // 索引是唯一的，pitem 表示其他框
         if (pitem[4] >= pcurrent[4]) {
@@ -375,4 +372,68 @@ void fast_nms_kernel(float* bboxes, int MAX_IMAGE_BOXES, float threshold) {
             }
         }
     }
+}
+
+__host__
+void affine_project(const utils::AffineMat& m,
+                                  float  src_x, float  src_y,
+                                  float* dst_x, float* dst_y) {
+    *dst_x = m.v0 * src_x + m.v1 * src_y + m.v2;
+    *dst_y = m.v3 * src_x + m.v4 * src_y + m.v5;
+}
+
+
+// CPU 版后处理 测试用
+// output_cdim: 84
+
+__host__
+void decode_cpu(const float* predict, float* parray, int num_bboxes, int num_classes, int output_cdim,
+                float confidence_threshold, int MAX_IMAGE_BOXES, std::shared_ptr<utils::AffineTrans> trans) {
+    int valid_count = 0;
+    const int stride = num_bboxes; // 每个属性之间的步长 (8400)
+
+    for (int box_idx = 0; box_idx < num_bboxes; ++box_idx) {
+        float cx = predict[0 * stride + box_idx];
+        float cy = predict[1 * stride + box_idx];
+        float w  = predict[2 * stride + box_idx];
+        float h  = predict[3 * stride + box_idx];
+        
+        float max_score = 0.0f;
+        int class_id = -1;
+        const float* class_scores = predict + 4 * stride;  // 跳过前 4 行，定位到类别属性开始
+        
+        for (int c = 0; c < num_classes; ++c) {
+            float score = class_scores[c * stride + box_idx];  // 当前框、当前类的 scores
+            if (score > max_score) {
+                max_score = score;
+                class_id = c;
+            }
+        }
+        
+        // 3. 应用置信度阈值
+        if (max_score >= confidence_threshold && valid_count < MAX_IMAGE_BOXES) {
+            float left   = cx - w * 0.5f;
+            float top    = cy - h * 0.5f;
+            float right  = cx + w * 0.5f;
+            float bottom = cy + h * 0.5f;
+            
+            // valid_count as index
+            int base_index = 1 + valid_count * 8;
+
+            affine_project(trans->get_d2s(), left, top, &left, &top);
+	        affine_project(trans->get_d2s(), right, bottom, &right, &bottom);
+
+            parray[base_index + 0] = left;                          // left
+            parray[base_index + 1] = top;                           // top
+            parray[base_index + 2] = right;                         // right
+            parray[base_index + 3] = bottom;                        // bottom
+            parray[base_index + 4] = max_score;                     // confidence
+            parray[base_index + 5] = static_cast<float>(class_id);  // class_label
+            parray[base_index + 6] = 1.0f;                          // keep_flag
+            parray[base_index + 7] = static_cast<float>(box_idx);   // pos
+            valid_count++;
+        }
+        if (valid_count >= MAX_IMAGE_BOXES) break;
+    }
+    parray[0] = static_cast<float>(valid_count);
 }

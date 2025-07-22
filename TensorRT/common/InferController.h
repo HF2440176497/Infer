@@ -3,6 +3,7 @@
 
 #include "common_include.h"
 #include "monopoly_allocator.h"
+#include "utils/processor.cuh"
 
 template <class Input, class Output, class StartParam>
 class InferController {
@@ -10,6 +11,7 @@ public:
     struct Job {
         Input                                               input;
         Output                                              output;
+        std::shared_ptr<utils::AffineTrans>                 trans;
         MonopolyAllocator<TRT::Tensor>::MonopolyDataPointer mono_tensor;  // 保存预处理完成的结果
         std::shared_ptr<std::promise<Output>>               pro;
     };
@@ -95,8 +97,8 @@ public:
                 job.pro = std::make_shared<std::promise<Output>>();
                 if (!preprocess(job, inputs[i])) {
                     INFO("preprocess error happened");
+                    job.pro->set_value(Output());
                 }
-                job.pro->set_value(Output());
                 results[i] = job.pro->get_future();
             }
         

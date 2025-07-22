@@ -12,7 +12,7 @@ public:
 };
 
 std::shared_ptr<Infer> create_infer(const std::string& engine_file, int gpuid, float confidence_threshold = 0.25f,
-                                    float nms_threshold = 0.5f, int max_objects = 1024,
+                                    float nms_threshold = 0.5f, int max_objects = 512,
                                     bool use_multi_preprocess_stream = false);
 
 }  // namespace Yolo
