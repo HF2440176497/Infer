@@ -25,7 +25,7 @@ static void inference_and_performance(int device_id, std::string model_file) {
     }
 
     std::vector<cv::Mat> images = utils::load_images("../data/images", 2);
-    std::vector<std::shared_future<ObjDetect::BoxArray>> boxes_array{};
+    std::vector<std::shared_future<ObjDetect::BoxArray>> boxes_array {};
 
     const int ntest = 1;
     auto begin_time = utils::timestamp_ms();
@@ -36,7 +36,7 @@ static void inference_and_performance(int device_id, std::string model_file) {
         Assert(boxes_array.size() == images.size());
         INFO("Current ntest index [%d] complete", i);
     }
-    int inference_average_time = (utils::timestamp_ms() - begin_time) / ntest;
+    int inference_average_time = (utils::timestamp_ms() - begin_time) / ntest / images.size();
     INFO("inference average time : %d", inference_average_time);
 
     // 绘制结果

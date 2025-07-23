@@ -99,6 +99,12 @@ cudaStream_t Processor::get_stream() {
     return stream_;
 }
 
+void Processor::synchronize() {
+    if (stream_) {
+        CHECK(cudaStreamSynchronize(stream_));
+    }
+}
+
 /**
  * 单张图片进行预处理
  */

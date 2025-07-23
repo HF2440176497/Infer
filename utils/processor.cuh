@@ -19,6 +19,7 @@ public:
 public:
     void         set_stream(cudaStream_t stream, bool owner_stream = false);
     cudaStream_t get_stream();
+    void         synchronize();
     void pre_compute(const cv::Mat& image, std::shared_ptr<TRT::Tensor> net_input, std::shared_ptr<utils::AffineTrans> trans);
     void post_compute(int ibatch, std::shared_ptr<TRT::Tensor> net_output, std::shared_ptr<TRT::Tensor> post_buffer,
                       int num_bboxes, int num_classes, int output_cdim, float confidence_threshold, int max_objects, std::shared_ptr<utils::AffineTrans> trans);

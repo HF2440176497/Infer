@@ -264,9 +264,6 @@ void InferImpl::forward(bool sync) {
     dims.d[0] = actual_batch_size;
     context_->context_->setInputShape(inputs_name_.c_str(), dims);
     
-    outputs_->resize_single_dim(0, actual_batch_size);  // 动态类型下，输出维度需要设置
-    outputs_->to_gpu(false);
-
     context_->context_->setInputTensorAddress(inputs_name_.c_str(), inputs_->gpu());
     context_->context_->setOutputTensorAddress(outputs_name_.c_str(), outputs_->gpu());
 
@@ -384,7 +381,7 @@ void InferImpl::print() {
         INFO("Infer print, nullptr.");
         return;
     }
-    INFO("Infer %p detail", this);
+    INFO("Infer Detail");
     INFO("\tBase device: %s", CUDATools::device_description().c_str());
     // INFO("\tOptimization Profiles num: %d", this->context_->engine_->getNbOptimizationProfiles());
     INFO("\tMax Batch Size: %d", this->get_max_batch_size());

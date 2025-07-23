@@ -56,7 +56,7 @@ namespace TRT {
     
         void reference_data(void* cpu, size_t cpu_size, void* gpu, size_t gpu_size);
     
-    //private:
+    private:
         void* cpu_ = nullptr;
         size_t cpu_size_ = 0;
         bool owner_cpu_ = true;
@@ -171,12 +171,12 @@ namespace TRT {
 
         void    reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, void* gpu_data, size_t gpu_size, nvinfer1::DataType dtype);
 
-    //private:
+    private:
         Tensor& compute_shape_string();
         Tensor& adajust_memory_by_update_dims_or_type();
         void    setup_data(std::shared_ptr<MixMemory> data);
 
-    //private:
+    private:
         nvinfer1::TensorFormat     format_ {nvinfer1::TensorFormat::kLINEAR};
         nvinfer1::DataType         dtype_ {nvinfer1::DataType::kFLOAT};
         std::vector<int>           shape_;
