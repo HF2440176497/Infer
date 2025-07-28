@@ -24,10 +24,10 @@ static void inference_and_performance(int device_id, std::string model_file) {
         return;
     }
 
-    std::vector<cv::Mat> images = utils::load_images("../data/images", 2);
+    std::vector<cv::Mat> images = utils::load_images("../data/images", 4);
     std::vector<std::shared_future<ObjDetect::BoxArray>> boxes_array {};
 
-    const int ntest = 1;
+    const int ntest = 10;
     auto begin_time = utils::timestamp_ms();
 
     for (int i = 0; i < ntest; ++i) {
@@ -57,7 +57,7 @@ static void inference_and_performance(int device_id, std::string model_file) {
 
         int64_t timestamp = utils::timestamp_ms();
         std::string filename = std::to_string(timestamp) + ".png";
-        cv::imwrite(filename, image);
+        // cv::imwrite(filename, image);
     }
     std::cout << "-------------- End print boxes" << std::endl;
 

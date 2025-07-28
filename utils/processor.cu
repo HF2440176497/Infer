@@ -39,7 +39,7 @@ void Processor::pre_compute(const cv::Mat& image, std::shared_ptr<TRT::Tensor> n
     size_t image_size = src_w * src_h * 3;  // bytes
 
     resize_buffer_->resize(std::vector<int>{1, src_h, src_w, 3});  // For cv::Mat, NHWC
-    resize_buffer_->to_gpu();
+    resize_buffer_->to_gpu();  // copy_from_cpu 之前，先调用 to_gpu
     resize_buffer_->copy_from_cpu(0, image.data, image_size);
 
     std::tuple<int, int> from{src_w, src_h};

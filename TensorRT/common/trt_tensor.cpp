@@ -5,180 +5,6 @@
 
 namespace TRT {
 
-	int data_type_size(TRT::DataType dt) {
-		switch (dt) {
-			case TRT::DataType::Float: return sizeof(float);
-            case TRT::DataType::Float16: return sizeof(__half);
-			case TRT::DataType::Int32: return sizeof(int);
-            case TRT::DataType::Int8: return sizeof(int8_t);
-			case TRT::DataType::UInt8: return sizeof(uint8_t);
-			default: {
-				INFO("Not support dtype: %d", dt);
-				return -1;
-			}
-		}
-	}
-
-    int data_type_size(nvinfer1::DataType dt) {
-		switch (dt) {
-            case nvinfer1::DataType::kFLOAT: return sizeof(float);
-            case nvinfer1::DataType::kHALF: return sizeof(__half);
-            case nvinfer1::DataType::kINT32: return sizeof(int);
-            case nvinfer1::DataType::kINT8: return sizeof(int8_t);
-            case nvinfer1::DataType::kUINT8: return sizeof(uint8_t);
-			default: {
-				INFO("Not support dtype: %d", dt);
-				return -1;
-			}
-		}
-	}
-
-    const char* data_type_string(TRT::DataType dt) {
-		switch(dt){
-			case TRT::DataType::Float: return "Float32";
-			case TRT::DataType::Float16: return "Float16";
-			case TRT::DataType::Int32: return "Int32";
-            case TRT::DataType::Int8: return "Int8";
-			case TRT::DataType::UInt8: return "UInt8";
-			default: return "Unknow";
-		}
-	}
-
-    const char* data_type_string(nvinfer1::DataType dt) {
-        switch (dt) {
-            case nvinfer1::DataType::kFLOAT: return "kFLOAT";
-            case nvinfer1::DataType::kHALF: return "kHALF";
-            case nvinfer1::DataType::kINT32: return "kINT32";
-            case nvinfer1::DataType::kINT8: return "kINT8";
-            case nvinfer1::DataType::kUINT8: return "kUINT8";
-            default: return "Unknown";
-        }
-    }
-
-    nvinfer1::DataType to_tensorRT_datatype(TRT::DataType dt) {
-        switch (dt) {
-            case TRT::DataType::Float: return nvinfer1::DataType::kFLOAT;
-            case TRT::DataType::Float16: return nvinfer1::DataType::kHALF;
-            case TRT::DataType::Int32: return nvinfer1::DataType::kINT32;
-            case TRT::DataType::Int8:  return nvinfer1::DataType::kINT8;
-            case TRT::DataType::UInt8: return nvinfer1::DataType::kUINT8;
-            default: throw std::runtime_error("Unsupported type for TensorRT");
-        }
-    }
-     
-    TRT::DataType to_tensor_datatype(nvinfer1::DataType dt) {
-        switch (dt) {
-            case nvinfer1::DataType::kFLOAT: return TRT::DataType::Float;
-            case nvinfer1::DataType::kHALF: return TRT::DataType::Float16;
-            case nvinfer1::DataType::kINT32: return TRT::DataType::Int32;
-            case nvinfer1::DataType::kINT8: return TRT::DataType::Int8;
-            case nvinfer1::DataType::kUINT8: return TRT::DataType::UInt8;
-            default: throw std::runtime_error("Unsupported TensorRT type");
-        }
-    }
-
-    inline static int get_device(int device_id){
-        if(device_id != CURRENT_DEVICE_ID){
-            CUDATools::check_device_id(device_id);
-            return device_id;
-        }
-        CHECK(cudaGetDevice(&device_id));
-        return device_id;
-    }
-
-    MixMemory::MixMemory(int device_id){
-        device_id_ = get_device(device_id);
-    }
-
-    MixMemory::MixMemory(void* cpu, size_t cpu_size, void* gpu, size_t gpu_size){
-        reference_data(cpu, cpu_size, gpu, gpu_size);		
-    }
-
-    void MixMemory::reference_data(void* cpu, size_t cpu_size, void* gpu, size_t gpu_size){
-        release_all();
-        
-        if(cpu == nullptr || cpu_size == 0){
-            cpu = nullptr;
-            cpu_size = 0;
-        }
-
-        if(gpu == nullptr || gpu_size == 0){
-            gpu = nullptr;
-            gpu_size = 0;
-        }
-
-        this->cpu_ = cpu;
-        this->cpu_size_ = cpu_size;
-        this->gpu_ = gpu;
-        this->gpu_size_ = gpu_size;
-
-        this->owner_cpu_ = !(cpu && cpu_size > 0);
-        this->owner_gpu_ = !(gpu && gpu_size > 0);
-        CHECK(cudaGetDevice(&device_id_));
-    }
-
-    MixMemory::~MixMemory() {
-        release_all();
-    }
-
-    /**
-     * 自动检测是否需要扩容
-     */
-    void* MixMemory::gpu(size_t size) {
-        if (gpu_size_ < size) {
-            release_gpu();
-            gpu_size_ = size;
-            CHECK(cudaMalloc(&gpu_, size));
-            CHECK(cudaMemset(gpu_, 0, size));
-        }
-        return gpu_;
-    }
-
-    void* MixMemory::cpu(size_t size) {
-        if (cpu_size_ < size) {
-            release_cpu();
-            cpu_size_ = size;
-            CHECK(cudaMallocHost(&cpu_, size));
-            Assert(cpu_ != nullptr);
-            memset(cpu_, 0, size);
-        }
-        return cpu_;
-    }
-
-    void MixMemory::release_cpu() {
-        if (cpu_) {
-            if (owner_cpu_) {
-                CHECK(cudaFreeHost(cpu_));
-            }
-            cpu_ = nullptr;
-        }
-        cpu_size_ = 0;
-    }
-
-    void MixMemory::release_gpu() {
-        if (gpu_) {
-            if (owner_gpu_) {
-                CHECK(cudaFree(gpu_));
-            }
-            gpu_ = nullptr;
-        }
-        gpu_size_ = 0;
-    }
-
-    void MixMemory::release_all() {
-        release_cpu();
-        release_gpu();
-    }
-
-    const char* data_head_string(DataHead dh){
-        switch(dh){
-            case DataHead::Init: return "Init";
-            case DataHead::Device: return "Device";
-            case DataHead::Host: return "Host";
-            default: return "Unknow";
-        }
-    }
-
     Tensor::Tensor(nvinfer1::DataType dtype, std::shared_ptr<MixMemory> data, int device_id) {
 		shape_string_[0] = 0;
 		descriptor_string_[0] = 0;
@@ -214,11 +40,12 @@ namespace TRT {
     /**
      * 根据模型相关信息 创建需要的维度
      */
-    Tensor::Tensor(nvinfer1::Dims dims, nvinfer1::DataType dtype, nvinfer1::TensorFormat format, std::shared_ptr<MixMemory> data, int device_id) {
-		this->dtype_ = dtype;
-		this->device_id_ = get_device(device_id);
-		descriptor_string_[0] = 0;
-		setup_data(data);
+    Tensor::Tensor(nvinfer1::Dims dims, nvinfer1::DataType dtype, nvinfer1::TensorFormat format,
+                   std::shared_ptr<MixMemory> data, int device_id) {
+        this->dtype_ = dtype;
+        this->device_id_ = get_device(device_id);
+        descriptor_string_[0] = 0;
+        setup_data(data);
         if (format != nvinfer1::TensorFormat::kLINEAR) {
             std::cerr << "Not supported format" << std::endl;
             return;
@@ -227,10 +54,10 @@ namespace TRT {
         for (int i = 0; i < dims.nbDims; ++i) {
             dims_vec.push_back(dims.d[i]);
         }
-	resize(dims_vec);
+        resize(dims_vec);
     }
 
-	Tensor::~Tensor() {
+    Tensor::~Tensor() {
 		release();
 	}
 
@@ -299,7 +126,6 @@ namespace TRT {
 
 	Tensor& Tensor::compute_shape_string(){
 
-		// clean string
 		shape_string_[0] = 0;
 
 		char* buffer = shape_string_;
@@ -307,7 +133,7 @@ namespace TRT {
 		for(int i = 0; i < shape_.size(); ++i){
 
 			int size = 0;
-			if(i < shape_.size() - 1)
+			if (i < shape_.size() - 1)
 				size = snprintf(buffer, buffer_size, "%d x ", shape_[i]);
 			else
 				size = snprintf(buffer, buffer_size, "%d", shape_[i]);
@@ -319,7 +145,7 @@ namespace TRT {
 	}
 
     /**
-     * data_ 会重现释放再引用
+     * data_ 会重新释放再引用
      */
 	void Tensor::reference_data(const std::vector<int>& shape, void* cpu_data, size_t cpu_size, 
                                 void* gpu_data, size_t gpu_size, nvinfer1::DataType dtype) {
@@ -337,29 +163,17 @@ namespace TRT {
             device_id_ = data_->device_id();
         }
         head_ = DataHead::Init;
+        updated_ = DataHead::Init;
         if (data_->cpu()) {
-            head_ = DataHead::Host;
+            head_ = head_ | DataHead::Host;
         }
         if (data_->gpu()) {
-            head_ = DataHead::Device;
+            head_ = head_ | DataHead::Device;
         }
-    }
-
-    std::shared_ptr<Tensor> Tensor::clone() const {
-        auto new_tensor = std::make_shared<Tensor>(shape_, dtype_);
-        if (head_ == DataHead::Init) return new_tensor;
-
-        if (head_ == DataHead::Host) {
-            memcpy((uint8_t*)new_tensor->cpu(), this->cpu(), this->bytes_);
-        } else if (head_ == DataHead::Device) {
-            CHECK(
-                cudaMemcpyAsync(new_tensor->gpu(), this->gpu(), bytes_, cudaMemcpyDeviceToDevice, stream_));
-        }
-        return new_tensor;
     }
 
     Tensor& Tensor::copy_from_gpu(size_t offset, const void* src, size_t num_element, int device_id) {
-        if (head_ == DataHead::Init) to_gpu(false);
+        if (head_ == DataHead::Init || updated_ == DataHead::Init) to_gpu();
 
         size_t offset_location = offset * element_size();
         if (offset_location >= bytes_) {
@@ -374,7 +188,8 @@ namespace TRT {
             return *this;
         }
 
-        if (head_ == DataHead::Device) {
+        // 按照更新标记拷贝内存
+        if (updated_ == DataHead::Device) {
             int current_device_id = get_device(device_id);
             int gpu_device_id = device();
             if (current_device_id != gpu_device_id) {
@@ -384,11 +199,11 @@ namespace TRT {
                 CHECK(cudaMemcpyAsync(gpu<uint8_t>() + offset_location, src, copyed_bytes,
                                                  cudaMemcpyDeviceToDevice, stream_));
             }
-        } else if (head_ == DataHead::Host) {
+        } else if (updated_ == DataHead::Host) {
             CHECK(cudaMemcpyAsync(cpu<uint8_t>() + offset_location, src, copyed_bytes,
-                                             cudaMemcpyDeviceToHost, stream_));
+                                cudaMemcpyDeviceToHost, stream_));
         } else {
-            INFO("Unsupport head type %d", head_);
+            INFO("Unsupport update_ type %d", updated_);
         }
         return *this;
     }
@@ -397,7 +212,7 @@ namespace TRT {
      * @param offset 拷贝到目标位置的元素偏移数
      */
     Tensor& Tensor::copy_from_cpu(size_t offset, const void* src, size_t num_element) {
-        if (head_ == DataHead::Init) to_cpu(false);
+        if (head_ == DataHead::Init || updated_ == DataHead::Init) to_cpu();
 
         size_t offset_location = offset * element_size();
         if (offset_location >= bytes_) {
@@ -411,13 +226,14 @@ namespace TRT {
             INFO("Copyed bytes[%lld] > remain bytes[%lld], out of range", copyed_bytes, remain_bytes);
             return *this;
         }
-        if (head_ == DataHead::Device) {
-            CHECK(cudaMemcpyAsync((uint8_t*)data_->gpu() + offset_location, src, copyed_bytes,
+        // 按照更新标记拷贝内存
+        if (updated_ == DataHead::Device) {
+            CHECK(cudaMemcpyAsync(gpu<uint8_t>() + offset_location, src, copyed_bytes,
                                              cudaMemcpyHostToDevice, stream_));
-        } else if (head_ == DataHead::Host) {
-            memcpy((uint8_t*)data_->cpu() + offset_location, src, copyed_bytes);
+        } else if (updated_ == DataHead::Host) {
+            memcpy(cpu<uint8_t>() + offset_location, src, copyed_bytes);
         } else {
-            INFO("Unsupport head type %d", head_);
+            INFO("Unsupport update_ type %d", updated_);
         }
         return *this;
     }
@@ -522,8 +338,9 @@ namespace TRT {
      */
     Tensor& Tensor::adajust_memory_by_update_dims_or_type() {
         int needed_size = this->numel() * element_size();
-        if (needed_size > this->bytes_) {
+        if (needed_size > this->bytes_) {  // 需要重新
             head_ = DataHead::Init;
+            updated_ = DataHead::Init;
         }
         this->bytes_ = needed_size;
         return *this;
@@ -534,32 +351,36 @@ namespace TRT {
 		return *this;
 	}
 
-	Tensor& Tensor::to_gpu(bool copy) {
-
-		if (head_ == DataHead::Device)
+	Tensor& Tensor::to_gpu() {
+		if (updated_ == DataHead::Device)
 			return *this;
 
-		head_ = DataHead::Device;
+		head_ = head_ | DataHead::Device;
 		data_->gpu(bytes_);
 
-		if (copy && data_->cpu() != nullptr) {
-			CHECK(cudaMemcpyAsync(data_->gpu(), data_->cpu(), bytes_, cudaMemcpyHostToDevice, stream_));
-		}
+        if (updated_ == DataHead::Host) {
+            CHECK(cudaMemcpyAsync(data_->gpu(), data_->cpu(), bytes_, cudaMemcpyHostToDevice, stream_));
+            CHECK(cudaStreamSynchronize(stream_));
+        }
+        updated_ = DataHead::Device;
 		return *this;
 	}
 	
-	Tensor& Tensor::to_cpu(bool copy) {
-
-		if (head_ == DataHead::Host)
+    /**
+     * 并不会对原已分配的数据进行检验
+     */
+	Tensor& Tensor::to_cpu() {
+		if (updated_ == DataHead::Host)
 			return *this;
 
-		head_ = DataHead::Host;
+		head_ = head_ | DataHead::Host;
 		data_->cpu(bytes_);
 
-		if (copy && data_->gpu() != nullptr) {
+        if (updated_ == DataHead::Device) {
 			CHECK(cudaMemcpyAsync(data_->cpu(), data_->gpu(), bytes_, cudaMemcpyDeviceToHost, stream_));
 			CHECK(cudaStreamSynchronize(stream_));
-		}
+        }
+        updated_ = DataHead::Host;
 		return *this;
 	}
 

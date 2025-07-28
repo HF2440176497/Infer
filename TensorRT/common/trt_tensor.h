@@ -3,69 +3,10 @@
 
 #include "common_include.h"
 #include "cuda_tools.h"
+#include "mix_mem.h"
 
-#define CURRENT_DEVICE_ID           -1
 
 namespace TRT {
-
-    enum class DataHead : int{
-        Init   = 0,
-        Device = 1,
-        Host   = 2
-    };
-
-    enum class DataType : int {
-        Unknow = -1,
-        Float = 0,
-        Float16 = 1,
-        Int32 = 2,
-        Int8 = 3,
-        UInt8 = 4
-    };
-
-    int data_type_size(DataType dt);
-    int data_type_size(nvinfer1::DataType dt);
-
-    const char* data_type_string(TRT::DataType dt);
-    const char* data_type_string(nvinfer1::DataType dt);
-
-    static int32_t div_up(int32_t a, int32_t b) {
-        return (a + b - 1) / b;
-    }
-
-    class MixMemory {
-    public:
-        MixMemory(int device_id = CURRENT_DEVICE_ID);
-        MixMemory(void* cpu, size_t cpu_size, void* gpu, size_t gpu_size);
-        virtual ~MixMemory();
-        void* gpu(size_t size);
-        void* cpu(size_t size);
-        void release_gpu();
-        void release_cpu();
-        void release_all();
-    
-        inline bool owner_gpu() const{return owner_gpu_;}
-        inline bool owner_cpu() const{return owner_cpu_;}
-    
-        inline size_t cpu_size() const{return cpu_size_;}
-        inline size_t gpu_size() const{return gpu_size_;}
-        inline int device_id() const{return device_id_;}
-    
-        inline void* gpu() const { return gpu_; }
-        inline void* cpu() const { return cpu_; }
-    
-        void reference_data(void* cpu, size_t cpu_size, void* gpu, size_t gpu_size);
-    
-    private:
-        void* cpu_ = nullptr;
-        size_t cpu_size_ = 0;
-        bool owner_cpu_ = true;
-        int device_id_ = 0;
-    
-        void* gpu_ = nullptr;
-        size_t gpu_size_ = 0;
-        bool owner_gpu_ = true;
-    };
 
     class Tensor {
     public:
@@ -104,7 +45,6 @@ namespace TRT {
         inline int                        element_size() const { return data_type_size(dtype_); }
         inline DataHead                   head() const { return head_; }
         
-        std::shared_ptr<Tensor>           clone() const;
         Tensor&                           release();
         bool                              empty() const;
 
@@ -131,8 +71,8 @@ namespace TRT {
         int     count(int start_axis = 0) const;
         int     device() const { return device_id_; }
 
-        Tensor& to_gpu(bool copy=true);
-        Tensor& to_cpu(bool copy=true);
+        Tensor& to_gpu();
+        Tensor& to_cpu();
 
         inline void* cpu() const { ((Tensor*)this)->to_cpu(); return data_->cpu(); }
         inline void* gpu() const { ((Tensor*)this)->to_gpu(); return data_->gpu(); }
@@ -151,8 +91,6 @@ namespace TRT {
 
         template<typename DType, typename ... _Args> 
         inline DType& at(int i, _Args&& ... args) { return *(cpu<DType>() + offset(i, args...)); }
-        
-        // std::shared_ptr<MixMemory> get_data()             const {return data_;}
 
         bool         is_stream_owner() const { return stream_owner_; }
         cudaStream_t get_stream() const { return stream_; }
@@ -183,6 +121,7 @@ namespace TRT {
         std::vector<size_t>        strides_;
         size_t                     bytes_ = 0;
         DataHead                   head_ = DataHead::Init;
+        DataHead                   updated_ = DataHead::Init;
         cudaStream_t               stream_ = nullptr;
         bool                       stream_owner_ = false;
         int                        device_id_ = 0;

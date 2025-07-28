@@ -38,14 +38,13 @@ using ControllerImpl = InferController
 class InferImpl : public Infer, public ControllerImpl {
 public:
     virtual std::vector<std::shared_future<ObjDetect::BoxArray>> commits(const std::vector<cv::Mat>& images) override;
-
-public:
-    virtual bool preprocess(Job& job, const cv::Mat& image) override;
-    virtual void worker(std::promise<bool>& result) override;
-
-public:
+    virtual bool                                                 preprocess(Job& job, const cv::Mat& image) override;
+    virtual void                                                 worker(std::promise<bool>& result) override;
     virtual bool startup(const std::string& file, int device_id, float confidence_threshold, float nms_threshold,
                          int max_objects, bool use_multi_preprocess_stream);
+
+private:
+    void set_default_outputs(std::vector<typename ControllerImpl::Job>& jobs);
 
 private:
     int                             input_width_ = 0;
@@ -107,6 +106,14 @@ std::vector<std::shared_future<ObjDetect::BoxArray>> InferImpl::commits(const st
     return ControllerImpl::commits(images);
 }
 
+void InferImpl::set_default_outputs(std::vector<typename ControllerImpl::Job>& jobs) {
+    for (auto& job : jobs) {
+        if (job.pro) {
+            job.pro->set_value(typename ControllerImpl::OutputType());
+        }
+    }
+}
+
 void InferImpl::worker(std::promise<bool>& result) {
     auto file = start_param_.model_file();
     int device_id = start_param_.device_id();
@@ -126,13 +133,13 @@ void InferImpl::worker(std::promise<bool>& result) {
     input_height_ = input->height();
     
     max_batch_size_ = engine->get_max_batch_size();  // ps: input dims[0] already max_batch_size 
-    tensor_allocator_ = std::make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size_ * 2);
+    tensor_allocator_ = std::make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size_ * 8);
     proc_ = std::make_shared<Processor>();
     output_array_device_ = std::make_shared<TRT::Tensor>(output->type());
 
     jobs_queue_ = std::make_unique<JobQueue<Job>>(
-        max_batch_size_ * 3,  // max_size
-        max_batch_size_ * 2,  // warn_size
+        max_batch_size_ * 10,  // max_size
+        max_batch_size_ * 6,  // warn_size
         [](size_t size) { INFO("WARNING: job_queue size: %d", size); },
         [](Job& job) { if (job.pro) job.pro->set_value(typename ControllerImpl::OutputType()); }
     );
@@ -147,19 +154,22 @@ void InferImpl::worker(std::promise<bool>& result) {
 
         if (!engine->validate_batch_size(infer_batch_size)) {
             INFO("ERROR: actual batch size not valid");
-            return;
+            set_default_outputs(fetch_jobs);
+            break;
         }
         // 设置实际批长度
         input->resize_single_dim(0, infer_batch_size);
+        input->to_gpu();
         output->resize_single_dim(0, infer_batch_size);
-        output->to_gpu(false);
+        output->to_gpu();
 
         if (output_array_device_ == nullptr) {
             INFO("ERROR: output_array_device_ not allocate");
-            return;
+            set_default_outputs(fetch_jobs);
+            break;
         }
         output_array_device_->resize(infer_batch_size, 1 + max_objects_ * NUM_BOX_ELEMENT);
-        output_array_device_->to_gpu(false);
+        output_array_device_->to_gpu();
 
         for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
             auto& job = fetch_jobs[ibatch];
@@ -188,7 +198,7 @@ void InferImpl::worker(std::promise<bool>& result) {
             proc_->nms_decode(ibatch, output_array_device_, nms_threshold_, max_objects_);
         }
         proc_->synchronize();
-        output_array_device_->to_cpu(true);  // copy to cpu
+        output_array_device_->to_cpu();  // copy to cpu
         for (int ibatch = 0; ibatch < infer_batch_size; ++ibatch) {
             float* parray = output_array_device_->cpu<float>(ibatch);
             int    count = std::min(max_objects_, static_cast<int>(parray[0]));
